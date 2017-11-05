@@ -1,0 +1,5 @@
+useDynLib(SeqSupport)
+import(RcppEigen)
+importFrom(Rcpp, evalCpp)
+exportPattern("^[[:alpha:]]+")
+importFrom(magrittr,"%>%")
