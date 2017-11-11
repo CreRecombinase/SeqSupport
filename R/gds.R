@@ -5,7 +5,7 @@
 #' @param alleles A boolean indicating whether alleles should be returned
 #' @param MAF A boolean indicating whether MAF should be computed and returned of not
 #' @param region_id A boolean indicating whether to return the LD block of each SNP
-read_SNPinfo_gds <- function(gds,alleles=F,MAF=F,region_id=F,map=F){
+read_SNPinfo_gds <- function(gds,alleles=F,MAF=F,region_id=F,map=F,info=F,more=NULL){
 
   tdf <- tibble::data_frame(SNP=SeqArray::seqGetData(gds,var.name="annotation/id"),
                             snp_id=SeqArray::seqGetData(gds,var.name="variant.id"),
@@ -15,6 +15,7 @@ read_SNPinfo_gds <- function(gds,alleles=F,MAF=F,region_id=F,map=F){
     tdf <- dplyr::mutate(tdf,allele=SeqArray::seqGetData(gds,var.name="allele"))
   }
   if(MAF){
+    library(SeqArray)
     tdf <- dplyr::mutate(tdf,MAF=SeqArray::seqAlleleFreq(gds))
   }
   if(region_id){
@@ -23,13 +24,23 @@ read_SNPinfo_gds <- function(gds,alleles=F,MAF=F,region_id=F,map=F){
   if(map){
     tdf <-dplyr::mutate(tdf,map=SeqArray::seqGetData(gds,"annotation/info/map"))
   }
+  if(info){
+    tdf <-dplyr::mutate(tdf,info=SeqArray::seqGetData(gds,"annotation/qual")) %>% mutate(info=info/max(info))
+  }
+  if(!is.null(more)){
+    tdf <- bind_cols(tdf,map_dfc(more,SeqArray::seqGetData,gdsfile=gds))
+  }
   return(tdf)
 }
 
 
-subset_gds <- function(gds,info_df,region_id=F,sample.id=NULL){
-  si_df <- dplyr::inner_join(info_df, read_SNPinfo_gds(gds,region_id=region_id)) %>%
-    dplyr::distinct(snp_id, .keep_all = T) %>% dplyr::arrange(snp_id)
+subset_gds <- function(gds,info_df=NULL,region_id=F,sample.id=NULL){
+  if(is.null(info_df)){
+    si_df <-read_SNPinfo_gds(gds,region_id=region_id) %>% dplyr::distinct(snp_id, .keep_all = T) %>% dplyr::arrange(snp_id)
+  }else{
+    si_df <- dplyr::inner_join(info_df, read_SNPinfo_gds(gds,region_id=region_id)) %>%
+      dplyr::distinct(snp_id, .keep_all = T) %>% dplyr::arrange(snp_id)
+  }
   SeqArray::seqSetFilter(gds,variant.id = si_df$snp_id,sample.id=sample.id)
   return(si_df)
 }
@@ -62,11 +73,12 @@ is_SNV <- function(allelevec){
 }
 
 
-subset_export_gds <- function(gds,sample.id=NULL,input_df,outfile_gds,outfile_h5,reset=T){
+subset_export_gds <- function(gds,sample.id=NULL,input_df=NULL,outfile_gds,outfile_h5,reset=T){
+  stopifnot(!is.null(outfile_h5),!is.null(outfile_gds),!is.null(sample.id)||is.null(input_df))
   output_df <- subset_gds(gds,input_df,region_id=T,sample.id=sample.id)
   p <- calc_p(gds)
   stopifnot(nrow(output_df)==p)
-  dosage2hdf5(gds,outfile_h5)
+  gds2hdf5(gds,outfile_h5)
   seqExport(gds,outfile_gds)
   seqClose(gds)
   return(output_df)
@@ -266,10 +278,10 @@ calc_LD_gds <- function(gds,m=85,Ne=11490.672741,cutoff=1e-3){
 }
 
 
-read_region_id <- function(gdsfile,region_id){
+read_region_id <- function(gdsfile,region_id,center=F){
   gds <- SeqArray::seqOpen(gdsfile)
   filter_region_id(gds,as.integer(region_id))
-  dat <-seqGetData(gds,"$dosage")
+  dat <-scale(seqGetData(gds,"$dosage"),center=center,scale=F)
   SeqArray::seqClose(gds)
   return(dat)
 }

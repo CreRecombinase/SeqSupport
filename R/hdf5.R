@@ -54,6 +54,166 @@ prep_h5file <- function(h5filename,create_dir=F){
     }
 }
 
+get_h5f <- function(hdf5file,readOnly=T){
+  read_wr <- ifelse(readOnly,"H5F_ACC_RDONLY","H5F_ACC_RDWR")
+  if(class(hdf5file)[1]=="character"){
+    stopifnot(file.exists(hdf5file))
+    return(rhdf5::H5Fopen(hdf5file,read_wr))
+  }else{
+    stopifnot(class(hdf5file)[1]=="H5IdComponent")
+    return(hdf5file)
+  }
+}
+
+
+is_transpose_h5 <- function(hdf5file,datapath){
+  if(class(hdf5file)[1]=="character"){
+    hf <- rhdf5::H5Fopen(hdf5file,"H5F_ACC_RDONLY")
+  }else{
+    hf <- hdf5file
+  }
+  if(class(datapath)[1]=="character"){
+    hd <- rhdf5::H5Dopen(hf,datapath)
+  }else{
+    hd <- datapath
+  }
+  attr <- rhdf5::H5Aopen(hd,"doTranspose")
+  doTranspose <- rhdf5::H5Aread(attr)==0
+  rhdf5::H5Aclose(attr)
+  if(class(datapath)[1]=="character"){
+    rhdf5::H5Dclose(hd)
+  }
+  if(class(hdf5file)[1]=="character"){
+    rhdf5::H5Fclose(hf)
+  }
+  return(doTranspose)
+}
+
+get_rownum_h5 <- function(hdf5file,datapath){
+  if(class(hdf5file)[1]=="character"){
+    hf <- rhdf5::H5Fopen(hdf5file,"H5F_ACC_RDONLY")
+  }else{
+    hf <- hdf5file
+  }
+  if(class(datapath)[1]=="character"){
+    hd <- rhdf5::H5Dopen(hf,datapath)
+  }else{
+    hd <- datapath
+  }
+
+  hd <- rhdf5::H5Dopen(hf,datapath)
+  hs <- rhdf5::H5Dget_space(hd)
+  dim <- rhdf5::H5Sget_simple_extent_dims(hs)$size
+  if(is_transpose(hf,hd)){
+    retdim <- dim[2]
+  }else{
+    retdim <- dim[1]
+  }
+  if(class(datapath)[1]=="character"){
+    rhdf5::H5Dclose(hd)
+  }
+  if(class(hdf5file)[1]=="character"){
+    rhdf5::H5Fclose(hf)
+  }
+  return(retdim)
+
+}
+
+get_colnum_h5 <- function(hdf5file,datapath){
+  if(class(hdf5file)[1]=="character"){
+    hf <- rhdf5::H5Fopen(hdf5file,"H5F_ACC_RDONLY")
+  }else{
+    hf <- hdf5file
+  }
+  if(class(datapath)[1]=="character"){
+    hd <- rhdf5::H5Dopen(hf,datapath)
+  }else{
+    hd <- datapath
+  }
+
+  hd <- rhdf5::H5Dopen(hf,datapath)
+  hs <- rhdf5::H5Dget_space(hd)
+  dim <- rhdf5::H5Sget_simple_extent_dims(hs)$size
+  if(is_transpose(hf,hd)){
+    retdim <- dim[1]
+  }else{
+    retdim <- dim[2]
+  }
+  if(class(datapath)[1]=="character"){
+    rhdf5::H5Dclose(hd)
+  }
+  if(class(hdf5file)[1]=="character"){
+    rhdf5::H5Fclose(hf)
+  }
+  return(retdim)
+
+}
+
+
+filter_region_id_hdf5(hdf5file,region_id,return_H=FALSE){
+  region_vec <- read_vec(hdf5file,"/SNPinfo/region_id")
+  p <- length(region_vec)
+  range((1:p)[region_vec==region_id])
+
+
+
+}
+
+split_i <- function(p,i=1,chunksize,retl=list()){
+  if(i+chunksize-1>=p){
+    retl[[length(retl)+1]] <- i:p
+    return(retl)
+  }
+  retl[[length(retl)+1]] <- i:(i+chunksize-1)
+  return(split_i(p,i+chunksize,chunksize,retl))
+}
+
+chr_LDshrink_h5 <- function(hdf5file,chrom,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T,chunksize){
+  library(rhdf5)
+
+  snp_info <- read_df_h5(hdf5file,"SNPinfo") %>% mutate(index=1:n()) %>% filter(chr==chrom)
+  H <- t(RcppEigenH5::read_2d_mat_h5(h5file = hdf5file,groupname = "",dataname = "dosage"))[,snp_info$index]
+  mapdat <-snp_info$map
+  p <- length(mapdat)
+  num_chunks <- ceiling(p/chunksize)
+  ldparms <- c(m,Ne,cutoff,calc_theta(m))
+  ivec <- split_i(p,1,chunksize)
+
+  for(i in 1:length(ivec)){
+    for(j in 1:length(ivec)){
+      tR <- calcLD_par(hmat = H,map = mapdat,ldparams = ldparms,id = as.integer(c(i-1,j-1,chunksize)))
+      # write_mat_chunk_h5()
+      # cat(i,"_",j,"_",nrow(tR),"_",ncol(tR),"\n")
+      # ntot_R[ivec[[i]],ivec[[j]]] <-tR
+    }
+  }
+
+  R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
+
+
+
+  stopifnot(file.exists(gds_file),!is.null(outfile))
+  gds <- SeqArray::seqOpen(gds_file,readonly = T)
+  filter_region_id(gds,region_id)
+
+  si <- read_SNPinfo_gds(gds) %>% dplyr::mutate(region_id=region_id)
+  R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
+
+
+  write_df_h5(df=si,groupname = "LDinfo",outfile = outfile,deflate_level = 4)
+  tls <- h5ls(outfile)
+  tls <- paste0(tls$group,"/",tls$name)
+  stopifnot(any("/LDinfo/SNP" %in% tls))
+  write_mat_h5(outfile,groupname = "LD",dataname = "R",data = R,deflate_level = 4,doTranspose = F)
+  if(evd){
+    eigenR <- eigen(R)
+    stopifnot(min(eigenR$values)>0)
+    write_mat_h5(outfile,groupname="EVD",dataname = "Q",data = eigenR$vectors,deflate_level = 0L)
+    write_vec(outfile,groupname="EVD",dataname = "D",data = eigenR$values,deflate_level = 2L)
+  }
+  return(dim(R))
+}
+
 
 
 
@@ -84,7 +244,7 @@ write_vec <- function(h5filename,groupname="/",dataname,data,deflate_level=0L,cr
   rhdf5::h5write(data,file=h5filename,name=d_path)
 }
 
-read_2d_mat_h5 <- function(h5filename,groupname="/",dataname){
+read_2d_mat_h5 <- function(h5filename,groupname="/",dataname,bounds=NULL){
   stopifnot(length(unique(groupname))==1,
             length(unique(dataname))==1,
             length(unique(h5filename))==1)
@@ -246,8 +406,13 @@ write_df_h5 <- function(df,groupname="/",outfile,deflate_level=4L){
 
 gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
   library(rhdf5)
-  gds <- SeqArray::seqOpen(gdsfile)
-  snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=F,region_id=T,map = T)
+
+  if(class(gdsfile)=="character"){
+    gds <- SeqArray::seqOpen(gdsfile)
+  }else{
+    gds <- gdsfile
+  }
+  snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=T,map = T,info=T,more=list(rs="annotation/id"))
   write_df_h5(df = snp_info,
               groupname = "SNPinfo",
               outfile=hdf5file,
@@ -310,6 +475,11 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=5000L,deflate_level=4L){
                 is_haplo=is_haplo,
                 var.index="relative")
 
-
-
 }
+
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 
 
-gen_quh_chunk_mat <- function(Zmat,evdf,gw_snpi){
+gen_quh_chunk_mat <- function(Zmat,evdf,gw_snpi,percent_variance=1){
   ld_snpi <- RcppEigenH5::read_ivec(evdf,"LDinfo","snp_id")
   p <-length(gw_snpi)
   subset_cols <- RcppEigenH5::match_sorted(gw_snpi,target = ld_snpi)+1
@@ -17,10 +17,12 @@ gen_quh_chunk_mat <- function(Zmat,evdf,gw_snpi){
     Dvec <- evdR$values
     Q <- evdR$vectors
   }
-  stopifnot(all.equal(sum(Dvec),p))
-  quh <- crossprod(Q,Zmat)
+  csD <-cumsum(Dvec)/p
+  stopifnot(all.equal(csD[p],1))
+  pm <- min(p,min(which(csD>=(percent_variance-2*.Machine$double.eps))))
+  quh <- crossprod(Q[,1:pm],Zmat)
   colnames(quh) <- colnames(Zmat)
-  return(list(quh=quh,D=Dvec,snp_id=gw_snpi))
+  return(list(quh=quh,D=Dvec[1:pm],snp_id=gw_snpi))
 }
 
 gen_quh_chunk <- function(gwas_df,evdf){

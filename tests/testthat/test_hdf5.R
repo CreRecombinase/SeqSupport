@@ -24,6 +24,10 @@ test_that("matrix (double) roundtrip works with rhdf5",{
 
 
 
+
+
+
+
 test_that("We can read and write dataframes correctly",{
 
 
