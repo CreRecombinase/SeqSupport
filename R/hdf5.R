@@ -150,14 +150,14 @@ get_colnum_h5 <- function(hdf5file,datapath){
 }
 
 
-filter_region_id_hdf5(hdf5file,region_id,return_H=FALSE){
-  region_vec <- read_vec(hdf5file,"/SNPinfo/region_id")
-  p <- length(region_vec)
-  range((1:p)[region_vec==region_id])
+## filter_region_id_hdf5 <- function(hdf5file,region_id,return_H=FALSE){
+##   region_vec <- read_vec(hdf5file,"/SNPinfo/region_id")
+##   p <- length(region_vec)
+##   range((1:p)[region_vec==region_id])
 
 
 
-}
+## }
 
 split_i <- function(p,i=1,chunksize,retl=list()){
   if(i+chunksize-1>=p){
