@@ -81,6 +81,21 @@ sim_uh_A <- function(sigu,bias,Q,D,fgeneid,usim){
   return(uhmat)
 }
 
+sim_quh <- function(tsigu,tbias,D,fgeneid,p){
+  stopifnot(length(tsigu)==length(fgeneid),
+            length(tbias)==length(fgeneid))
+  return(purrr::map2_dfc(tsigu,tbias,function(sig,a,dvec,p){
+    dplyr::data_frame(rnorm(n=p,mean=0,sd=sqrt(sig^2*dvec^2+dvec+a)))
+  },dvec=D,p=p) %>% data.matrix() %>% magrittr::set_colnames(as.character(fgeneid)))
+}
+
+sim_quh_qu <- function(D,qu,tbias,fgeneid){
+  p <- nrow(qu)
+  return(purrr::map2_dfc(purrr::array_branch(qu,2),tbias,function(q,a,dvec,p){
+    dplyr::data_frame(rnorm(n=p,mean=dvec*q,sd=sqrt(dvec+a)))
+  },dvec=D,p=p) %>% data.matrix() %>% magrittr::set_colnames(as.character(fgeneid)))
+}
+
 
 
 #' "Directly" simulate data from the RSSp likelihood for a single value of `sigu` and `bias`.
@@ -90,27 +105,39 @@ sim_uh_A <- function(sigu,bias,Q,D,fgeneid,usim){
 #' @param D vector of eigenvalues corresponding to Q ( must have length equal to rank of `Q`)
 #' @param fgeneid name for the trait (character)
 #' @param snp_id vector of IDs for the SNPs
-sim_quh_dir <- function(tsigu,tbias,fgeneid=NULL,D,seed=NULL,snp_id){
-  p <- length(D)
-  if(!is.null(seed)){
-    stopifnot(is.integer(seed))
-    set.seed(seed)
-  }
-  sigu <- unique(tsigu)
-  bias <- unique(tbias)
-
-  nreps <- length(fgeneid)
-
-  stopifnot(length(sigu)==length(bias),
-            length(nreps)==length(sigu),
-            length(sigu)==1,!is.null(fgeneid),
-            length(fgeneid)==1)
-  p <- length(D)
-  quh <- t(t(rnorm(n=p,mean=0,sd=sqrt(sigu^2*D^2+D+bias))))
-
+sim_uh_quh_dir_u <- function(tsigu,tbias,fgeneid=NULL,Q,D,seed=NULL,snp_id,umat){
+  stopifnot(length(tsigu)==length(tbias),
+            length(tbias)==length(fgeneid))
+  p <- length(snp_id)
   fgeneid <- as.character(fgeneid)
-  colnames(quh) <- fgeneid
-  return(list(quh=quh,D=D,snp_id=snp_id))
+  qu <-crossprod(Q,umat)
+  quh <-sim_quh_qu(D,qu,tbias,fgeneid)
+  uh <-Q%*%quh
+  colnames(uh) <- fgeneid
+  return(list(quh=quh,snp_id=snp_id,uh=uh))
+}
+
+
+
+
+
+#' "Directly" simulate data from the RSSp likelihood for a single value of `sigu` and `bias`.
+#' @param tsigu desired sd of the true effect
+#' @param tbias true value for bias/confounding
+#' @param Q matrix of eigenvectors of the LD matrix (must be square, and must have rank equal to nrow(usim))
+#' @param D vector of eigenvalues corresponding to Q ( must have length equal to rank of `Q`)
+#' @param fgeneid name for the trait (character)
+#' @param snp_id vector of IDs for the SNPs
+sim_uh_quh_dir <- function(tsigu,tbias,fgeneid=NULL,Q,D,seed=NULL,snp_id){
+stopifnot(length(tsigu)==length(tbias),
+          length(tbias)==length(fgeneid))
+
+  p <- length(snp_id)
+  fgeneid <- as.character(fgeneid)
+  quh <-sim_quh(tsigu,tbias,D,fgeneid,p)
+  uh <-Q%*%quh
+  colnames(uh) <- fgeneid
+  return(list(quh=quh,snp_id=snp_id,uh=uh))
 }
 
 
@@ -290,72 +317,63 @@ sim_S_beta <- function(index,x,beta){
 
 
 gen_ty_block_gds <- function(gds,tparam_df,seed=NULL,chunksize=10000,betamat=NULL,beta_h5file=NULL){
-  if(!is.null(seed)){
-    set.seed(seed)
-  }
-  # gds <- seqOpen(gds_file,readonly = T)
-  isHaplo <- is_haplo(gds)
-  stopifnot(!isHaplo)
-  chunksize <- min(c(calc_p(gds),chunksize))
-  if(!is.null(betamat)){
-    p <- calc_p(gds)
-    stopifnot(nrow(betamat)==p)
-    S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
-                         sim_S_beta,
-                         margin="by.variant",
-                         as.is = "list",beta=betamat,
-                         .progress = T,var.index="relative",
-                         bsize = chunksize)
-
+    if(!is.null(seed)){
+        set.seed(seed)
+    }
+                                        # gds <- seqOpen(gds_file,readonly = T)
+    isHaplo <- is_haplo(gds)
+    stopifnot(!isHaplo)
+    chunksize <- min(c(calc_p(gds),chunksize))
+    if(!is.null(betamat)){
+        p <- calc_p(gds)
+        stopifnot(nrow(betamat)==p)
+        S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
+                                       sim_S_beta,
+                                       margin="by.variant",
+                                       as.is = "list",beta=betamat,
+                                       .progress = T,var.index="relative",
+                                       bsize = chunksize)
+    }else{
+        if(!is.null(beta_h5file)){
+            library(rhdf5)
+            p <- calc_p(gds)
+            G <- nrow(tparam_df)
+            dims_beta <- c(G,p)
+            if(!dir.exists(dirname(beta_h5file))){
+                dir.create(dirname(beta_h5file))
+            }
+            if(!file.exists(beta_h5file)){
+                h5createFile(beta_h5file)
+            }
+            h5createDataset(file = beta_h5file,
+                            dataset = "beta",
+                            dims = dims_beta,maxdims = dims_beta,
+                            storage.mode ="double",chunk = c(G,chunksize),
+                            level = 4L,
+                            showWarnings = F)
+            h5createDataset(file = beta_h5file,
+                            dataset = "S",
+                            dims = p,maxdims = p,
+                            storage.mode ="double",chunk = c(chunksize),
+                            level = 4L,
+                            showWarnings = F)
+            fh <- rhdf5::H5Fopen(beta_h5file,flags = "H5F_ACC_RDWR")
+            dsp <-rhdf5::H5Oopen(fh,"beta")
+            transpose_wr <- 1L
+            rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
+            rhdf5::H5Oclose(dsp)
+            rhdf5::H5Fclose(fh)
+        }
+        S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
+                                       sim_S,
+                                       margin="by.variant",
+                                       as.is = "list",
+                                       outfile_h5=beta_h5file,
+                                       .progress = T,var.index="relative",
+                                       sigu=tparam_df$tsigu,bsize = chunksize)
+    }
     ty <- Reduce("+",S_U)
     return(ty)
-  }
-
-  if(!is.null(beta_h5file)){
-    library(rhdf5)
-    p <- calc_p(gds)
-    G <- nrow(tparam_df)
-    dims_beta <- c(G,p)
-    if(!dir.exists(dirname(beta_h5file))){
-      dir.create(dirname(beta_h5file))
-    }
-    if(!file.exists(beta_h5file)){
-      h5createFile(beta_h5file)
-    }
-    h5createDataset(file = beta_h5file,
-                    dataset = "beta",
-                    dims = dims_beta,maxdims = dims_beta,
-                    storage.mode ="double",chunk = c(G,chunksize),
-                    level = 4L,
-                    showWarnings = F)
-    h5createDataset(file = beta_h5file,
-                    dataset = "S",
-                    dims = p,maxdims = p,
-                    storage.mode ="double",chunk = c(chunksize),
-                    level = 4L,
-                    showWarnings = F)
-
-    fh <- rhdf5::H5Fopen(beta_h5file,flags = "H5F_ACC_RDWR")
-    dsp <-rhdf5::H5Oopen(fh,"beta")
-    transpose_wr <- 1L
-    rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
-    rhdf5::H5Oclose(dsp)
-    rhdf5::H5Fclose(fh)
-  }
-
-
-
-
-
-  S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
-                       sim_S,
-                       margin="by.variant",
-                       as.is = "list",
-                       outfile_h5=beta_h5file,
-                       .progress = T,var.index="relative",
-                       sigu=tparam_df$tsigu,bsize = chunksize)
-  ty <- Reduce("+",S_U)
-  return(ty)
 }
 
 
@@ -463,7 +481,7 @@ gen_bhat_se_block_gds <- function(gds,ymat,cores,tparam_df,chunksize=10000,na.rm
 }
 
 
-gen_sim_resid <- function(ty,tparam_df,residmat=NULL){
+gen_sim_resid <- function(ty,tparam_df,residmat=NULL,resid_h5file=NULL){
   if(is.null(residmat)){
     vy <- apply(ty, 2, var)
     n <- nrow(ty)

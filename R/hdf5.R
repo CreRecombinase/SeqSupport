@@ -150,6 +150,36 @@ get_colnum_h5 <- function(hdf5file,datapath){
 }
 
 
+LDshrink_write <- function(H,map,region_id,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T){
+  R <-LDshrink::calcLD(t(H),map,m=m,Ne=Ne,cutoff=cutoff)
+
+  # write_df_h5(df=si,groupname = "LDinfo",outfile = outfile,deflate_level = 4)
+  # tls <- h5ls(outfile)
+  # tls <- paste0(tls$group,"/",tls$name)
+  # stopifnot(any("/LDinfo/SNP" %in% tls))
+  write_mat_h5(outfile,groupname = as.character(region_id),dataname = "R",data = R,deflate_level = 4,doTranspose = F)
+  if(evd){
+    eigenR <- eigen(R)
+    stopifnot(min(eigenR$values)>0)
+    write_mat_h5(outfile,groupname=as.character(region_id),dataname = "Q",data = eigenR$vectors,deflate_level = 0L)
+    write_vec(outfile,groupname=as.character(region_id),dataname = "D",data = eigenR$values,deflate_level = 2L)
+  }
+}
+
+
+
+chunkwise_LDshrink_hdf5 <- function(hdf5_file,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T){
+  library(rhdf5)
+  stopifnot(file.exists(hdf5_file),!is.null(outfile))
+  region_id_v=read_vec(hdf5_file,"/SNPinfo/region_id")
+  bX <-split.data.frame(read_2d_mat_h5(hdf5_file,"/",dataname = "dosage"),region_id_v)
+  mapl <- split(read_vec(hdf5_file,"/SNPinfo/map"),region_id_v)
+  stopifnot(all.equal(names(bX),names(mapl)))
+  pmap(list(H=bX,map=mapl,region_id=names(bX)),LDshrink_write,outfile=outfile,m=m,Ne=Ne,cutoff=cutoff,evd=evd)
+}
+
+
+
 ## filter_region_id_hdf5 <- function(hdf5file,region_id,return_H=FALSE){
 ##   region_vec <- read_vec(hdf5file,"/SNPinfo/region_id")
 ##   p <- length(region_vec)
@@ -188,7 +218,7 @@ chr_LDshrink_h5 <- function(hdf5file,chrom,outfile=NULL,m=85,Ne=11490.672741,cut
     }
   }
 
-  R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
+ # R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
 
 
 
@@ -304,7 +334,7 @@ list.datasets <- function(h5filename,groupname="/",subcols=NULL){
 
 
 
-read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=NULL){
+read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=list(NULL)){
   library(rhdf5)
   stopifnot(file.exists(h5filepath))
   if(is.null(groupname)){
@@ -323,9 +353,9 @@ read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=NULL){
   names(paths) <- dsets
   stopifnot(length(dsets)>0)
   if(is.logical(filtervec)){
-    filtervec <- which(filtervec)
+    filtervec <- purrr::map(filtervec,which)
   }
-  return(purrr::map_dfc(.x = paths,purrr::compose(c,rhdf5::h5read),file=h5filepath,index=list(filtervec)))
+  return(purrr::map_dfc(.x = paths,purrr::compose(c,rhdf5::h5read),file=h5filepath,index=filtervec))
 }
 
 
