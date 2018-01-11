@@ -299,13 +299,18 @@ calc_p <- function(gds){
   length(SeqArray::seqGetData(gds,"variant.id"))
 }
 
+calc_p_h5 <- function(h5){
+RcppEigenH5::get_rownum_h5(h5[1],h5[2],h5[3])
+}
+calc_N_h5 <- function(h5){
+  RcppEigenH5::get_colnum_h5(h5[1],h5[2],h5[3])
+}
+
 #' Find number of individuals in the dataset
 #' @param gds A SeqArray gds object
 calc_N <- function(gds){
   length(SeqArray::seqGetData(gds,"sample.id"))
 }
-
-
 
 sim_S_beta <- function(index,x,beta){
   p <- ncol(x)
@@ -314,6 +319,125 @@ sim_S_beta <- function(index,x,beta){
   ty <- sx%*%(beta[ix,])
   return(ty)
 }
+
+
+# gen_ty_block_h5 <- function(gds,tparam_df,seed=NULL,chunksize=10000,betamat=NULL,beta_h5file=NULL){
+#
+#   chunksize <- min(c(calc_p(gds),chunksize))
+#   if(!is.null(betamat)){
+#     p <- calc_p(gds)
+#     stopifnot(nrow(betamat)==p)
+#     S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
+#                                    sim_S_beta,
+#                                    margin="by.variant",
+#                                    as.is = "list",beta=betamat,
+#                                    .progress = T,var.index="relative",
+#                                    bsize = chunksize)
+#   }else{
+#     if(!is.null(beta_h5file)){
+#       library(rhdf5)
+#       p <- calc_p(gds)
+#       G <- nrow(tparam_df)
+#       dims_beta <- c(G,p)
+#       if(!dir.exists(dirname(beta_h5file))){
+#         dir.create(dirname(beta_h5file))
+#       }
+#       if(!file.exists(beta_h5file)){
+#         h5createFile(beta_h5file)
+#       }
+#       h5createDataset(file = beta_h5file,
+#                       dataset = "beta",
+#                       dims = dims_beta,maxdims = dims_beta,
+#                       storage.mode ="double",chunk = c(G,chunksize),
+#                       level = 4L,
+#                       showWarnings = F)
+#       h5createDataset(file = beta_h5file,
+#                       dataset = "S",
+#                       dims = p,maxdims = p,
+#                       storage.mode ="double",chunk = c(chunksize),
+#                       level = 4L,
+#                       showWarnings = F)
+#       fh <- rhdf5::H5Fopen(beta_h5file,flags = "H5F_ACC_RDWR")
+#       dsp <-rhdf5::H5Oopen(fh,"beta")
+#       transpose_wr <- 1L
+#       rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
+#       rhdf5::H5Oclose(dsp)
+#       rhdf5::H5Fclose(fh)
+#     }
+#     S_U <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
+#                                    sim_S,
+#                                    margin="by.variant",
+#                                    as.is = "list",
+#                                    outfile_h5=beta_h5file,
+#                                    .progress = T,var.index="relative",
+#                                    sigu=tparam_df$tsigu,bsize = chunksize)
+#   }
+#   ty <- Reduce("+",S_U)
+#   return(ty)
+# }
+
+
+
+sim_S_h5 <- function(index,in_h5file,sigu,out_h5file){
+  X <- RcppEigenH5::read_2d_index_chunk_h5()
+}
+
+gen_ty_block_h5 <- function(h5file,tparam_df,seed=NULL,chunksize=10000,betamat=NULL,beta_h5file=NULL){
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+   p <- calc_p_h5(c(h5file,"/","dosage"))
+   N <- calc_N_h5(c(h5file,"/","dosage"))
+  chunksize <- min(c(p-10,chunksize))
+  if(is.null(betamat)){
+    num_chunks <- ceiling(p/chunksize)
+    chunkl <- split(1:p,cut(1:p,breaks = num_chunks))
+    G <- nrow(tparam_df)
+    dims_beta <- as.integer(c(G,p))
+    cat("Creating beta matrix\n")
+    EigenH5::create_matrix_h5(filename = beta_h5file,
+                              groupname = "/",
+                              dataname = "beta",
+                              dimensions = dims_beta,
+                              doTranspose = F,
+                              chunksizes=as.integer(c(G,chunksize/10)))
+    # EigenH5::create_matrix_h5(filename = beta_h5file, groupname = "/", dataname = "U",dimensions = dims_beta,doTranspose = T)
+    cat("Creating S vector\n")
+    EigenH5::create_vector_h5(filename = beta_h5file, groupname = "/", dataname="S",dimension=as.integer(p),chunksize=as.integer(chunksize/10))
+    #EigenH5::create_vector_h5(filename = beta_h5file, groupname = "/", dataname="S",dimension=as.integer(p))
+    ty <- matrix(0,N,G)
+    pb <- progress::progress_bar$new(total=num_chunks)
+    for(i in 1:num_chunks){
+      pb$tick()
+
+      chunk_b <- chunkl[[i]]-1
+      chunk_start <-as.integer(chunk_b[1])
+      chunk_size <- as.integer(length(chunk_b))
+      tD <- t(EigenH5::read_mat_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
+      n <- nrow(tD)
+      stopifnot(n==N)
+      tp <- ncol(tD)
+      sx <- scale(tD,center=T,scale=F)
+      u_mat <- sapply(tparam_df$tsigu,function(tsigu,p){rnorm(n=p,mean=0,sd=tsigu)},p=tp)
+      S <- 1/sqrt(n)*1/apply(sx,2,sd)
+      beta <- u_mat*S
+      beta[!is.finite(beta)]<-0
+      ty <- ty+sx%*%beta
+      tbeta <- t(beta)
+      S <- c(S)
+      EigenH5::write_mat_chunk_h5(filename = beta_h5file,groupname = "/",dataname = "beta",data = tbeta,offsets = c(0L,chunk_start),chunksizes = c(G,chunk_size))
+      EigenH5::write_vec_chunk_h5(filename = beta_h5file,groupname = "/",dataname = "S",data = S,offsets = c(chunk_start),chunksizes = c(chunk_size))
+    }
+  }else{
+    stop("Method not(yet) implemented for pre-specified Beta")
+  }
+  return(ty)
+}
+
+
+
+
 
 
 gen_ty_block_gds <- function(gds,tparam_df,seed=NULL,chunksize=10000,betamat=NULL,beta_h5file=NULL){
@@ -447,7 +571,71 @@ gen_uhat_se_block_gds <- function(gds,ymat,cores,tparam_df,chunksize=10000,na.rm
 
 
 
+gen_bhat_se_block_h5 <- function(h5file,ymat,SNP_subset=NULL,tparam_df,chunksize=10000,na.rm=F,bh_outfile){
 
+  if(is.null(SNP_subset)){
+    p <- calc_p_h5(h5file,"/","dosage")
+    SNP_subset <- 1:p
+  }
+  p <-length(SNP_subset)
+  N <- calc_N_h5(c(h5file,"/","dosage"))
+  chunksize <- min(c(p-10,chunksize))
+  num_chunks <- ceiling(p/chunksize)
+  pb <- progress::progress_bar$new(total=num_chunks)
+
+  chunkl <- split(SNP_subset,cut(SNP_subset,breaks = num_chunks))
+  G <- nrow(tparam_df)
+  stopifnot(G==ncol(ymat))
+  dims_beta <- as.integer(c(G,p))
+  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "uh",dimensions = dims_beta,doTranspose = T)
+  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "se",dimensions = dims_beta,doTranspose = T)
+
+  # EigenH5::create_matrix_h5(filename = beta_h5file, groupname = "/", dataname = "U",dimensions = dims_beta,doTranspose = T)
+  EigenH5::create_vector_h5(filename = bh_outfile, groupname = "/", dataname="S",dimension=as.integer(p))
+
+  for(i in 1:num_chunks){
+    chunk_b <- chunkl[[i]]-1
+    chunk_start <-as.integer(chunk_b[1])
+    chunk_size <- as.integer(length(chunk_b))
+    tD <- t(EigenH5::read_mat_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
+    n <- nrow(tD)
+    tp <- ncol(tD)
+    sx <- scale(tD,center=T,scale=F)
+    betahat <- RSSReQTL::map_beta_exp(sx, ymat)
+    se_mat <- RSSReQTL::map_se_exp(sx, ymat, betahat)
+    uh_mat <- betahat/se_mat
+    bias_mat <- sapply(tparam_df$tbias, function(ta, p){rnorm(n=p, mean=0, sd=sqrt(ta))}, p=tp)
+    colnames(bias_mat) <- as.character(tparam_df$fgeneid)
+    bias_uh_mat <- uh_mat+bias_mat
+    pb$tick()
+  }
+
+  bh_se_matl <- SeqArray::seqBlockApply(gds,c(x="$dosage"),
+                                        function(x,ymat){
+                                          sx <- scale(x,center=T,scale=F)
+                                          betahat <- RSSReQTL::map_beta_exp(sx, ymat)
+                                          se_mat <- RSSReQTL::map_se_exp(sx, ymat, betahat)
+                                          return(list(betahat=betahat,se_mat=se_mat))
+                                        },ymat=ymat,
+                                        margin="by.variant",
+                                        as.is = "list",
+                                        .progress = T,bsize = chunksize,parallel=cores)
+  uh_matl <- purrr::map(bh_se_matl,~.x$betahat/.x$se_mat)
+  uh_mat <- do.call("rbind",uh_matl)
+  se_mat <- do.call("rbind",purrr::map(bh_se_matl,"se_mat"))
+  p <- nrow(uh_mat)
+  colnames(uh_mat) <- as.character(tparam_df$fgeneid)
+  colnames(uh_mat) <- as.character(tparam_df$fgeneid)
+
+  bias_mat <- sapply(tparam_df$tbias, function(ta, p){rnorm(n=p, mean=0, sd=sqrt(ta))}, p=p)
+  colnames(bias_mat) <- as.character(tparam_df$fgeneid)
+  bias_uh_mat <- uh_mat+bias_mat
+  colnames(bias_uh_mat) <- as.character(tparam_df$fgeneid)
+  if(na.rm){
+    bias_uh_mat[!is.finite(bias_uh_mat)] <- 0
+  }
+  return(list(bias_uh_mat=bias_uh_mat,se_mat=se_mat))
+}
 
 
 
@@ -492,6 +680,16 @@ gen_sim_resid <- function(ty,tparam_df,residmat=NULL,resid_h5file=NULL){
   return(ymat)
 }
 
+
+gen_sim_phenotype_h5 <- function(h5file,tparam_df,seed=NULL,chunksize=10000,fgeneid=NULL,betamat=NULL,residmat=NULL,beta_h5file=NULL){
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  ty <- gen_ty_block_h5(h5file=h5file,tparam_df=tparam_df,seed=seed,chunksize=chunksize,betamat=betamat,beta_h5file=beta_h5file)
+
+  return(gen_sim_resid(ty,tparam_df,residmat))
+}
 
 
 gen_sim_phenotype_gds <- function(gds,tparam_df,seed=NULL,chunksize=10000,fgeneid=NULL,betamat=NULL,residmat=NULL,beta_h5file=NULL){

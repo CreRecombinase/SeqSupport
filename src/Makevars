@@ -1,3 +1,9 @@
-RHDF5_LIBS=`echo 'Rhdf5lib::pkgconfig("PKG_CXX_LIBS")'|\
+CXX_STD = CXX14
+RHDF5_LIBS=`echo 'Rhdf5lib::pkgconfig("PKG_C_LIBS")'|\
     "${R_HOME}/bin/R" --vanilla --slave`
-PKG_LIBS=$(RHDF5_LIBS)
+BLOSC_CFLAGS+=$(shell echo 'libblosc::pkgconfig("PKG_CFLAGS")'|\
+"${R_HOME}/bin/R" --vanilla --slave)
+PKG_LIBS+=$(shell echo 'libblosc::pkgconfig("PKG_LIBS_shared")' |\
+"${R_HOME}/bin/R" --vanilla --slave)
+PKG_LIBS += $(RHDF5_LIBS)
+PKG_CPPFLAGS += -I../inst/include ${BLOSC_CFLAGS} -DUSE_BLOSC -DH5_USE_EIGEN

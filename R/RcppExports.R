@@ -13,3 +13,15 @@ match_sorted <- function(query, target) {
     .Call('_SeqSupport_match_sorted_exp', PACKAGE = 'SeqSupport', query, target)
 }
 
+map_eQTL2_h5 <- function(SNP_path, EXP_path, out_path, SNP_chunksize = 20000L, EXP_chunksize = -1L) {
+    invisible(.Call('_SeqSupport_map_eQTL2_h5', PACKAGE = 'SeqSupport', SNP_path, EXP_path, out_path, SNP_chunksize, EXP_chunksize))
+}
+
+test_loop <- function() {
+    invisible(.Call('_SeqSupport_test_loop', PACKAGE = 'SeqSupport'))
+}
+
+# Register entry points for exported C++ functions
+methods::setLoadAction(function(ns) {
+    .Call('_SeqSupport_RcppExport_registerCCallable', PACKAGE = 'SeqSupport')
+})
