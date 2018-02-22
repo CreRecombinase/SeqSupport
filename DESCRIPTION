@@ -9,6 +9,6 @@ Description: `SeqSupport` provides a series of functions for importing data from
     including `RSSp` and `RSSR`.
 License: GPL (>= 3)
 Imports: Rcpp (>= 0.12.10), RcppEigen (>= 0.3.2.9.1),dplyr,progress,BBmisc,LDshrink,RSSp,tidyr,purrr,magrittr
-LinkingTo: Rcpp, RcppEigen,Rhdf5lib,EigenH5,libblosc
-Remotes: bioc::IRanges,bioc::SeqArray, bioc::Rhdf5lib
+LinkingTo: Rcpp, RcppEigen,Rhdf5lib,EigenH5,libblosc,RcppProgress
+Remotes: bioc::IRanges,bioc::SeqArray, bioc::Rhdf5lib,CreRecombinase/libblosc,CreRecombinase/EigenH5
 Suggests: testthat

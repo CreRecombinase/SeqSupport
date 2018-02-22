@@ -13,12 +13,24 @@ match_sorted <- function(query, target) {
     .Call('_SeqSupport_match_sorted_exp', PACKAGE = 'SeqSupport', query, target)
 }
 
-map_eQTL2_h5 <- function(SNP_path, EXP_path, out_path, SNP_chunksize = 20000L, EXP_chunksize = -1L) {
-    invisible(.Call('_SeqSupport_map_eQTL2_h5', PACKAGE = 'SeqSupport', SNP_path, EXP_path, out_path, SNP_chunksize, EXP_chunksize))
+map_eQTL_h5 <- function(SNP_path, EXP_path, out_path, SNP_chunksize = 20000L, EXP_chunksize = -1L) {
+    invisible(.Call('_SeqSupport_map_eQTL_h5', PACKAGE = 'SeqSupport', SNP_path, EXP_path, out_path, SNP_chunksize, EXP_chunksize))
 }
 
-test_loop <- function() {
-    invisible(.Call('_SeqSupport_test_loop', PACKAGE = 'SeqSupport'))
+crossprod_h5 <- function(filenames, groupnames, datanames) {
+    invisible(.Call('_SeqSupport_crossprod_h5', PACKAGE = 'SeqSupport', filenames, groupnames, datanames))
+}
+
+crossprod_quh_h5 <- function(q_dff, uh_dff, quh_dff) {
+    invisible(.Call('_SeqSupport_crossprod_quh_h5', PACKAGE = 'SeqSupport', q_dff, uh_dff, quh_dff))
+}
+
+map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff) {
+    invisible(.Call('_SeqSupport_map_eQTL_chunk_h5', PACKAGE = 'SeqSupport', snp_dff, exp_dff, uhat_dff, se_dff))
+}
+
+read_ld_chunk_h5 <- function(filename, ld_chunk) {
+    .Call('_SeqSupport_read_ld_chunk_h5', PACKAGE = 'SeqSupport', filename, ld_chunk)
 }
 
 # Register entry points for exported C++ functions

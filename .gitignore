@@ -2,3 +2,14 @@
 .Rhistory
 .RData
 .Ruserdata
+src/*.o
+src/*.so
+src/*.dll
+.dir-locals.el
+compile_commands.json
+*~
+**~
+*.snakemake*
+GTAGS
+GRTAGS
+GPATH

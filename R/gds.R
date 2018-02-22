@@ -25,10 +25,10 @@ read_SNPinfo_gds <- function(gds,alleles=F,MAF=F,region_id=F,map=F,info=F,more=N
     tdf <-dplyr::mutate(tdf,map=SeqArray::seqGetData(gds,"annotation/info/map"))
   }
   if(info){
-    tdf <-dplyr::mutate(tdf,info=SeqArray::seqGetData(gds,"annotation/qual")) %>% mutate(info=info/max(info))
+    tdf <-dplyr::mutate(tdf,info=SeqArray::seqGetData(gds,"annotation/qual")) %>% dplyr::mutate(info=info/max(info))
   }
   if(!is.null(more)){
-    tdf <- bind_cols(tdf,map_dfc(more,SeqArray::seqGetData,gdsfile=gds))
+    tdf <- dplyr::bind_cols(tdf,purrr::map_dfc(more,SeqArray::seqGetData,gdsfile=gds))
   }
   return(tdf)
 }
@@ -82,6 +82,22 @@ subset_export_gds <- function(gds,sample.id=NULL,input_df=NULL,outfile_gds,outfi
   seqExport(gds,outfile_gds)
   seqClose(gds)
   return(output_df)
+}
+
+
+snpgdsR2SNP <- function(X,snp_df,samp_df=data_frame(sample_id=as.character(1:ncol(X))),outf=tempfile(),compress.geno="LZ4_RA.fast",compress.annotation="LZ4_RA.fast"){
+SNPRelate::snpgdsCreateGeno(gds.fn = outf,
+                            genmat=X,
+                            sample.id = samp_df$sample_id,
+                            snp.id = snp_df$snp_id,
+                            snp.rs.id =snp_df$SNP,
+                            snp.chromosome = snp_df$chr,
+                            snp.position = snp_df$pos,
+                            snp.allele = snp_df$allele,
+                            snpfirstdim = (nrow(X)==nrow(snp_df)),
+                            compress.annotation = compress.annotation,
+                            compress.geno = compress.geno)
+  return(outf)
 }
 
 
@@ -173,7 +189,7 @@ add_chunk_gds <- function(gds_file,region_bed_file){
 #' snp_id (character or integer)
 #' @param match_at_start indicate whether you want to boundary SNPs to match at start or stop
 #' @return
-#' A dataframe joining the two dataframes when start<=pos<=stop
+#' A dataframe joining the two dataframes where start<=pos<=stop
 match_SNP <- function(break_df,snp_df,match_at_start=T){
 
   # Whether or not break_df and snp_df use character or integer for chr, we'll use character

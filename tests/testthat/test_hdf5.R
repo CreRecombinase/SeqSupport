@@ -2,6 +2,72 @@ context("hdf5")
 
 
 
+test_that("can count up dims in a file",{
+
+
+  library(purrr)
+  n <- 3L
+  p <- 4L
+  test_mat_1 <-matrix(runif(n*p),n,p)
+  test_mat_2 <-matrix(runif(n*p),n,p)
+
+  test_mat_QL <- rerun(11,matrix(runif(p*p),p,p))
+  test_mat_uhL <- rerun(11,matrix(runif(n*p),p,n))
+
+out_l <-map2(test_mat_QL,test_mat_uhL,crossprod)
+
+  tfa <-rerun(11,tempfile()) %>% flatten_chr()
+  tfb <- rerun(11,tempfile()) %>% flatten_chr()
+tfc <- rerun(11,tempfile()) %>% flatten_chr()
+
+iwalk(tfc,~EigenH5::create_matrix_h5(.x,as.character(.y),"result",numeric(),dims=c(p,n)))
+
+pwalk(list(test_mat_QL,tfa,as.character(1:length(test_mat_QL))),~EigenH5::write_matrix_h5(..2,"/",..3,..1))
+pwalk(list(test_mat_uhL,tfb,as.character(1:length(test_mat_uhL))),~EigenH5::write_matrix_h5(..2,"/",..3,..1))
+
+  in_df <- tibble::data_frame(filenames=tfa,
+                               groupnames="/",
+                               datanames=as.character(1:length(test_mat_QL)))
+  in2_df <- tibble::data_frame(filenames=tfb,
+                              groupnames="/",
+                              datanames=as.character(1:length(test_mat_uhL)))
+  out_df <-tibble::data_frame(filenames=tfc,
+                              groupnames=as.character(1:length(tfc)),
+                              datanames="result")
+  crossprod_quh_h5(in_df,in2_df,out_df)
+  res_mat_l <- imap(tfc,~EigenH5::read_matrix_h5(.x,as.character(.y),"result"))
+  expect_equal(res_mat_l,out_l)
+
+
+  # cum_data_dims(q_dff = sub_df)
+
+})
+
+
+test_that("crossproduct works",{
+
+
+
+    n <- 40L
+    p <- 30L
+    test_mat_1 <-matrix(runif(n*p),n,p)
+    test_mat_2 <-matrix(runif(n*p),n,p)
+
+    tf2 <- tempfile()
+    tf3 <- tempfile()
+    EigenH5::write_matrix_h5(tf2,"/","test",test_mat_1,doTranspose = F)
+    EigenH5::write_matrix_h5(tf3,"/","test",test_mat_2,doTranspose = F)
+  tfo <- tempfile()
+  Rrres <- crossprod(test_mat_1,test_mat_2)
+  crossprod_h5(c(tf2,tf3,tfo),c("/","/","/"),c("test","test","testo"))
+  Crres <- EigenH5::read_mat_h5(tfo,"/","testo")
+  expect_equal(Rrres,Crres)
+
+  })
+
+
+})
+
 
 
 test_that("matrix (double) roundtrip works with rhdf5",{
@@ -19,6 +85,44 @@ test_that("matrix (double) roundtrip works with rhdf5",{
 
   expect_equal(test_mat,Rread_mat_2)
   expect_equal(test_mat,r_read_mat_2)
+
+})
+
+
+test_that("ld_region splitting works as",{
+
+
+  num_ld_r <- 20
+  region_id <- integer()
+  result_matrix <- matrix(0,num_ld_r,3)
+  for(i in 1:num_ld_r){
+    result_matrix[i,1] <- i
+    result_matrix[i,2] <- length(region_id)
+    isize <- sample(1:1000,1)
+    result_matrix[i,3] <- isize
+    region_id <- c(region_id,rep(i,isize))
+  }
+  N <- 100
+  lr <- length(region_id)
+  test_mat <- matrix(0.01,lr,N)
+  for(i in 1:nrow(result_matrix)){
+    row_start <- (result_matrix[i,2]+1)
+    row_stop <- row_start+result_matrix[i,3]-1
+    row_val <- result_matrix[i,1]
+    test_mat[row_start:row_stop,] <- as.numeric(row_val)
+  }
+
+  tempf <- tempfile()
+  EigenH5::write_vector_h5(filename = tempf,groupname = "SNPinfo",dataname = "region_id",data = region_id)
+  write_matrix_h5(filename=tempf,groupname="/",dataname = "dosage",data = test_mat)
+  tM <- apply(result_matrix,1,function(x,filename,groupname,dataname,N){
+    tX <- read_mat_h5(filename,groupname,dataname,
+                      offsets=as.integer(c(x[2],0)),
+                      chunksizes = as.integer(c(x[3],N)))
+    ttX <- read_ld_chunk_h5(filename,x[1])
+    expect_equal(tX,ttX)
+  },filename=tempf,groupname="/",dataname="dosage",N=N)
+
 
 })
 

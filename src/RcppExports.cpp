@@ -74,9 +74,9 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// map_eQTL2_h5
-void map_eQTL2_h5(const Rcpp::StringVector SNP_path, const Rcpp::StringVector EXP_path, const Rcpp::StringVector out_path, int SNP_chunksize, int EXP_chunksize);
-RcppExport SEXP _SeqSupport_map_eQTL2_h5(SEXP SNP_pathSEXP, SEXP EXP_pathSEXP, SEXP out_pathSEXP, SEXP SNP_chunksizeSEXP, SEXP EXP_chunksizeSEXP) {
+// map_eQTL_h5
+void map_eQTL_h5(const Rcpp::StringVector SNP_path, const Rcpp::StringVector EXP_path, const Rcpp::StringVector out_path, int SNP_chunksize, int EXP_chunksize);
+RcppExport SEXP _SeqSupport_map_eQTL_h5(SEXP SNP_pathSEXP, SEXP EXP_pathSEXP, SEXP out_pathSEXP, SEXP SNP_chunksizeSEXP, SEXP EXP_chunksizeSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::StringVector >::type SNP_path(SNP_pathSEXP);
@@ -84,17 +84,57 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const Rcpp::StringVector >::type out_path(out_pathSEXP);
     Rcpp::traits::input_parameter< int >::type SNP_chunksize(SNP_chunksizeSEXP);
     Rcpp::traits::input_parameter< int >::type EXP_chunksize(EXP_chunksizeSEXP);
-    map_eQTL2_h5(SNP_path, EXP_path, out_path, SNP_chunksize, EXP_chunksize);
+    map_eQTL_h5(SNP_path, EXP_path, out_path, SNP_chunksize, EXP_chunksize);
     return R_NilValue;
 END_RCPP
 }
-// test_loop
-void test_loop();
-RcppExport SEXP _SeqSupport_test_loop() {
+// crossprod_h5
+void crossprod_h5(Rcpp::StringVector filenames, Rcpp::StringVector groupnames, Rcpp::StringVector datanames);
+RcppExport SEXP _SeqSupport_crossprod_h5(SEXP filenamesSEXP, SEXP groupnamesSEXP, SEXP datanamesSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    test_loop();
+    Rcpp::traits::input_parameter< Rcpp::StringVector >::type filenames(filenamesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector >::type groupnames(groupnamesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector >::type datanames(datanamesSEXP);
+    crossprod_h5(filenames, groupnames, datanames);
     return R_NilValue;
+END_RCPP
+}
+// crossprod_quh_h5
+void crossprod_quh_h5(const Rcpp::DataFrame q_dff, const Rcpp::DataFrame uh_dff, const Rcpp::DataFrame quh_dff);
+RcppExport SEXP _SeqSupport_crossprod_quh_h5(SEXP q_dffSEXP, SEXP uh_dffSEXP, SEXP quh_dffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type q_dff(q_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type uh_dff(uh_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type quh_dff(quh_dffSEXP);
+    crossprod_quh_h5(q_dff, uh_dff, quh_dff);
+    return R_NilValue;
+END_RCPP
+}
+// map_eQTL_chunk_h5
+void map_eQTL_chunk_h5(const Rcpp::DataFrame snp_dff, const Rcpp::DataFrame exp_dff, const Rcpp::DataFrame uhat_dff, const Rcpp::DataFrame se_dff);
+RcppExport SEXP _SeqSupport_map_eQTL_chunk_h5(SEXP snp_dffSEXP, SEXP exp_dffSEXP, SEXP uhat_dffSEXP, SEXP se_dffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type snp_dff(snp_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type exp_dff(exp_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type uhat_dff(uhat_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type se_dff(se_dffSEXP);
+    map_eQTL_chunk_h5(snp_dff, exp_dff, uhat_dff, se_dff);
+    return R_NilValue;
+END_RCPP
+}
+// read_ld_chunk_h5
+Rcpp::NumericMatrix read_ld_chunk_h5(const std::string filename, const int ld_chunk);
+RcppExport SEXP _SeqSupport_read_ld_chunk_h5(SEXP filenameSEXP, SEXP ld_chunkSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string >::type filename(filenameSEXP);
+    Rcpp::traits::input_parameter< const int >::type ld_chunk(ld_chunkSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ld_chunk_h5(filename, ld_chunk));
+    return rcpp_result_gen;
 END_RCPP
 }
 
@@ -119,8 +159,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SeqSupport_haplo_2_geno", (DL_FUNC) &_SeqSupport_haplo_2_geno, 2},
     {"_SeqSupport_haplo_2_geno_i", (DL_FUNC) &_SeqSupport_haplo_2_geno_i, 2},
     {"_SeqSupport_match_sorted_exp", (DL_FUNC) &_SeqSupport_match_sorted_exp, 2},
-    {"_SeqSupport_map_eQTL2_h5", (DL_FUNC) &_SeqSupport_map_eQTL2_h5, 5},
-    {"_SeqSupport_test_loop", (DL_FUNC) &_SeqSupport_test_loop, 0},
+    {"_SeqSupport_map_eQTL_h5", (DL_FUNC) &_SeqSupport_map_eQTL_h5, 5},
+    {"_SeqSupport_crossprod_h5", (DL_FUNC) &_SeqSupport_crossprod_h5, 3},
+    {"_SeqSupport_crossprod_quh_h5", (DL_FUNC) &_SeqSupport_crossprod_quh_h5, 3},
+    {"_SeqSupport_map_eQTL_chunk_h5", (DL_FUNC) &_SeqSupport_map_eQTL_chunk_h5, 4},
+    {"_SeqSupport_read_ld_chunk_h5", (DL_FUNC) &_SeqSupport_read_ld_chunk_h5, 2},
     {"_SeqSupport_RcppExport_registerCCallable", (DL_FUNC) &_SeqSupport_RcppExport_registerCCallable, 0},
     {NULL, NULL, 0}
 };

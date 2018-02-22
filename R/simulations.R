@@ -1,5 +1,20 @@
 #Code for generating simulations
 
+sim_snp_mat <- function(p=1e4,n=300,af=runif(p)){
+  return(matrix(rbinom(n = p*n,size = 2,prob = af),nrow = p,ncol =n))
+}
+
+
+sim_snp_df <- function(p=1e4,break_df=NULL){
+data("break_df",package = "LDshrink")
+return(tibble::data_frame(chr=sample(1:22,p,replace=T),
+                          pos=as.integer(runif(p, 0, .Machine$integer.max)),
+                          SNP=paste0("rs",as.integer(runif(p,0,.Machine$integer.max))),
+                          allele=replicate(p,paste0(sample(c("A","C","G","T"),2,replace=F),collapse="/")))%>%
+  dplyr::distinct() %>% dplyr::arrange(chr,pos)%>% dplyr::mutate(snp_id=1:n()))
+}
+
+
 #' Generate parameters of simulation
 #' @param pve true PVE
 #' @param bias true value for bias/confounding
@@ -300,10 +315,10 @@ calc_p <- function(gds){
 }
 
 calc_p_h5 <- function(h5){
-RcppEigenH5::get_rownum_h5(h5[1],h5[2],h5[3])
+EigenH5::get_dims_h5(h5[1],h5[2],h5[3])[1]
 }
 calc_N_h5 <- function(h5){
-  RcppEigenH5::get_colnum_h5(h5[1],h5[2],h5[3])
+  EigenH5::get_dims_h5(h5[1],h5[2],h5[3])[2]
 }
 
 #' Find number of individuals in the dataset
@@ -399,7 +414,8 @@ gen_ty_block_h5 <- function(h5file,tparam_df,seed=NULL,chunksize=10000,betamat=N
     EigenH5::create_matrix_h5(filename = beta_h5file,
                               groupname = "/",
                               dataname = "beta",
-                              dimensions = dims_beta,
+                              data = numeric(),
+                              dims = dims_beta,
                               doTranspose = F,
                               chunksizes=as.integer(c(G,chunksize/10)))
     # EigenH5::create_matrix_h5(filename = beta_h5file, groupname = "/", dataname = "U",dimensions = dims_beta,doTranspose = T)
@@ -414,7 +430,7 @@ gen_ty_block_h5 <- function(h5file,tparam_df,seed=NULL,chunksize=10000,betamat=N
       chunk_b <- chunkl[[i]]-1
       chunk_start <-as.integer(chunk_b[1])
       chunk_size <- as.integer(length(chunk_b))
-      tD <- t(EigenH5::read_mat_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
+      tD <- t(EigenH5::read_matrix_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
       n <- nrow(tD)
       stopifnot(n==N)
       tp <- ncol(tD)
@@ -587,8 +603,8 @@ gen_bhat_se_block_h5 <- function(h5file,ymat,SNP_subset=NULL,tparam_df,chunksize
   G <- nrow(tparam_df)
   stopifnot(G==ncol(ymat))
   dims_beta <- as.integer(c(G,p))
-  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "uh",dimensions = dims_beta,doTranspose = T)
-  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "se",dimensions = dims_beta,doTranspose = T)
+  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "uh",data=numeric(),dims= dims_beta,doTranspose = T)
+  EigenH5::create_matrix_h5(filename = bh_outfile, groupname = "/", dataname = "se",data=numeric(),dims = dims_beta,doTranspose = T)
 
   # EigenH5::create_matrix_h5(filename = beta_h5file, groupname = "/", dataname = "U",dimensions = dims_beta,doTranspose = T)
   EigenH5::create_vector_h5(filename = bh_outfile, groupname = "/", dataname="S",dimension=as.integer(p))
@@ -597,7 +613,7 @@ gen_bhat_se_block_h5 <- function(h5file,ymat,SNP_subset=NULL,tparam_df,chunksize
     chunk_b <- chunkl[[i]]-1
     chunk_start <-as.integer(chunk_b[1])
     chunk_size <- as.integer(length(chunk_b))
-    tD <- t(EigenH5::read_mat_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
+    tD <- t(EigenH5::read_matrix_h5(h5file,"/","dosage",offsets=c(chunk_start,0L),chunksizes=c(chunk_size,N)))
     n <- nrow(tD)
     tp <- ncol(tD)
     sx <- scale(tD,center=T,scale=F)

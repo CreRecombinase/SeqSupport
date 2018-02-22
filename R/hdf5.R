@@ -10,12 +10,30 @@ read_SNPinfo <- function(snpfile,chr_to_char=T, extra_cols = NULL, id_col=NULL){
 
   pos <- read_ivec(snpfile,"/","pos")
   chr <- read_ivec(snpfile,"/","chr")
-  snp_df <- data_frame(pos = pos, chr = chr) %>% mutate(snp_id = paste0("SNP: ",1:n()))
+  snp_df <- tibble::data_frame(pos = pos, chr = chr) %>% dplyr::mutate(snp_id = paste0("SNP: ",1:n()))
   if (chr_to_char) {
-    snp_df <- mutate(snp_df,chr = paste0("chr",chr))
+    snp_df <- dplyr::mutate(snp_df,chr = paste0("chr",chr))
   }
   return(snp_df)
 }
+
+read_SNPinfo_allel <- function(snpfile,groupname="variants"){
+
+  objd <- EigenH5::get_objs_h5(snpfile,"variants")
+  obj_dims <- purrr::map_int(objd,~length(EigenH5::get_dims_h5(snpfile,"variants",.x)))
+  obj_t <- purrr::map_int(objd,~as.integer(EigenH5::check_dtype(snpfile,"variants",.x)))
+  ALT <- read_vector_h5(snpfile,"variants","ALT")
+  all_t <- objd[obj_dims==1&(obj_t %in%c(13,14,16))]
+  known_weird_cols <- c("AA","AN","CS","DP","END","MC","MEND","MLEN","MSTART","NS","QUAL","SVLEN","SVTYPE","TSD")
+  snp_df <-EigenH5::read_df_h5(snpfile,"variants",subcols=all_t)%>%
+    dplyr::rename(SNP=ID,chr=CHROM,pos=POS) %>%
+    dplyr::select(-dplyr::one_of(known_weird_cols)) %>%
+    tidyr::unite(allele,REF,ALT,sep=",") %>% mutate(snp_id=1:n(),chr=as.integer(chr))
+
+  return(snp_df)
+}
+
+
 
 
 read_vec <- function(h5filename,datapath){
@@ -166,28 +184,89 @@ LDshrink_write <- function(H,map,region_id,outfile=NULL,m=85,Ne=11490.672741,cut
   }
 }
 
+chunkwise_LDshrink_h5 <- function(input_file,
+                                  output_file,
+                                  snp_df,
+                                  m=85,
+                                  Ne=11490.672741,
+                                  cutoff=1e-3,
+                                  evd=T,
+                                  svd=T){
+
+  stopifnot(file.exists(input_file),
+            !file.exists(output_file),
+            !is.null(snp_df[["region_id"]]),
+            !is.null(snp_df[["map"]]))
+  if(is.null(snp_df[["snp_id"]])){
+    snp_df <- dplyr::mutate(snp_df,snp_id=1:n())
+  }
+  p <- nrow(snp_df)
+
+  dosage_dims <-EigenH5::get_dims_h5(input_file,"/","dosage")
+  pm <- dosage_dims-p
+  stopifnot(!all(pm<0))
+  SNPfirst <-  which.min(abs(pm))==1
+  mapf <- tempfile()
+  EigenH5::write_vector_h5(filename = mapf,groupname = "SNPinfo",dataname = "map",data = snp_df$map)
+
+  input_dff <- EigenH5::split_chunk_df(snp_df,pos_id=snp_id,group_id=region_id) %>% dplyr::mutate(chunk_group=region_id) %>% filter(!is.na(chunk_group))
+  map_dff <- dplyr::mutate(input_dff,filenames=mapf,groupnames="SNPinfo",datanames="map") %>% dplyr::mutate(col_offsets=0L,col_chunksizes=1L)
+  data_dff <- dplyr::mutate(input_dff,filenames=input_file,groupnames="/",datanames="dosage")
+
+  if(SNPfirst){
+    data_dff <- data_dff%>% dplyr::select(-dplyr::starts_with("col_"))
+  }else{
+    data_dff <- data_dff%>% dplyr::select(-dplyr::starts_with("row_"))
+  }
+
+  in_dff <- dplyr::bind_rows(map_dff,data_dff)
+  in_dff <- dplyr::mutate(in_dff,row_offsets=0L,row_chunksizes=-1L)
+  output_dff <-dplyr::mutate(input_dff,row_offsets=0L,col_offsets=0L,row_c_chunksizes=row_chunksizes,col_c_chunksizes=col_chunksizes,datatypes="numeric")
+  R_dff <- dplyr::mutate(output_dff,filenames=output_file,groupnames=paste0("LD/",region_id),datanames="R")
+  L2_dff <- dplyr::mutate(output_dff,filenames=output_file,groupnames=paste0("L2/",region_id),datanames="L2",col_chunksizes=1L,col_c_chunksizes=1L)
+  Q_dff <- dplyr::filter(output_dff,evd) %>% dplyr::mutate(filenames=output_file,groupnames=paste0("EVD/",region_id),datanames="Q")
+  D_dff <- dplyr::filter(output_dff,evd) %>% dplyr::mutate(filenames=output_file,groupnames=paste0("EVD/",region_id),datanames="D",col_chunksizes=1L,col_c_chunksizes=1L)
+
+  out_data_dff <- rbind(R_dff,L2_dff,Q_dff,D_dff)
+  snp_df <- mutate(snp_df,ld_snp_id=1:n())
+  EigenH5::write_df_h5(df=snp_df,groupname = "LDinfo",outfile = output_file)
+
+  EigenH5::create_mat_l(out_data_dff)
 
 
-chunkwise_LDshrink_hdf5 <- function(hdf5_file,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T){
-  library(rhdf5)
-  stopifnot(file.exists(hdf5_file),!is.null(outfile))
-  region_id_v=read_vec(hdf5_file,"/SNPinfo/region_id")
-  bX <-split.data.frame(read_2d_mat_h5(hdf5_file,"/",dataname = "dosage"),region_id_v)
-  mapl <- split(read_vec(hdf5_file,"/SNPinfo/map"),region_id_v)
-  stopifnot(all.equal(names(bX),names(mapl)))
-  pmap(list(H=bX,map=mapl,region_id=names(bX)),LDshrink_write,outfile=outfile,m=m,Ne=Ne,cutoff=cutoff,evd=evd)
+  # tl <- read_mat_l(filter(in_dff,chunk_group==1))
+
+
+  LDshrink::calc_LD_chunk_h5(input_dff = in_dff,output_dff = out_data_dff,m=m,Ne=Ne,cutoff=cutoff,SNPfirst=SNPfirst,evd=evd)
+  if(svd){
+    run_svd <-function(filenames,groupnames,datanames,chunk_group,row_offsets=0,col_offsets=0,col_chunksizes=NULL,row_chunksizes=NULL,...){
+      tX <- EigenH5::read_mat_h5(filenames,
+                                 groupnames,
+                                 datanames,
+                                 offset_rows = row_offsets,
+                                 offset_col=col_offsets,
+                                 chunksize_rows=row_chunksizes,
+                                 chunksize_cols=col_chunksizes)
+      if(SNPfirst){
+        tX <- t(tX)
+      }
+      tX <- scale(tX,center=T,scale=T)
+      tp <- ncol(tX)
+      svdR <- svd(tX)
+      # if(tp<=3){
+      #   svdR <- svd(tX)
+      # }else{
+      #   svdR <-RSpectra::svds(tX,k=tp,nu=0,nv=tp)
+      # }
+      EigenH5::write_vector_h5(filename = output_file,groupname = paste0("SVD/",chunk_group),dataname="d",svdR$d)
+      EigenH5::write_matrix_h5(filename = output_file,groupname = paste0("SVD/",chunk_group),dataname="V",svdR$v)
+      return(T)
+    }
+    trun_svd <- purrr::lift_dl(run_svd)
+    dplyr::rowwise(data_dff) %>% dplyr::do(data_frame(res=trun_svd(.)))
+  }
 }
 
-
-
-## filter_region_id_hdf5 <- function(hdf5file,region_id,return_H=FALSE){
-##   region_vec <- read_vec(hdf5file,"/SNPinfo/region_id")
-##   p <- length(region_vec)
-##   range((1:p)[region_vec==region_id])
-
-
-
-## }
 
 split_i <- function(p,i=1,chunksize,retl=list()){
   if(i+chunksize-1>=p){
@@ -246,33 +325,33 @@ chr_LDshrink_h5 <- function(hdf5file,chrom,outfile=NULL,m=85,Ne=11490.672741,cut
 
 
 
-
-write_vec <- function(h5filename,groupname="/",dataname,data,deflate_level=0L,create_dir=F){
-  library(rhdf5)
-    prep_h5file(h5filename,create_dir)
-
-    groupname <- ifelse(groupname=="/","",groupname)
-    d_path <- paste0(groupname,"/",dataname)
-    if(!group_exists(h5filename,groupname)){
-      rhdf5::h5createGroup(h5filename,groupname)
-    }
-  groupname <- ifelse(groupname=="/","",groupname)
-  d_path <- paste0(groupname,"/",dataname)
-  if(typeof(data)=="character"){
-    rhdf5::h5createDataset(
-      file=h5filename,
-      dataset=d_path,showWarnings=F,
-      dims=as.integer(length(data)),maxdims=as.integer(length(data)),
-      storage.mode=storage.mode(data),chunk = as.integer(length(data)/10),size=255L,level=deflate_level)
-  }else{
-    rhdf5::h5createDataset(
-      file=h5filename,
-      dataset=d_path,showWarnings=F,
-      dims=as.integer(length(data)),maxdims=as.integer(length(data)),
-      storage.mode=storage.mode(data),chunk = as.integer(length(data)/10),level=deflate_level)
-  }
-  rhdf5::h5write(data,file=h5filename,name=d_path)
-}
+#
+# write_vec <- function(h5filename,groupname="/",dataname,data,deflate_level=0L,create_dir=F){
+#   library(rhdf5)
+#     prep_h5file(h5filename,create_dir)
+#
+#     groupname <- ifelse(groupname=="/","",groupname)
+#     d_path <- paste0(groupname,"/",dataname)
+#     if(!group_exists(h5filename,groupname)){
+#       rhdf5::h5createGroup(h5filename,groupname)
+#     }
+#   groupname <- ifelse(groupname=="/","",groupname)
+#   d_path <- paste0(groupname,"/",dataname)
+#   if(typeof(data)=="character"){
+#     rhdf5::h5createDataset(
+#       file=h5filename,
+#       dataset=d_path,showWarnings=F,
+#       dims=as.integer(length(data)),maxdims=as.integer(length(data)),
+#       storage.mode=storage.mode(data),chunk = as.integer(length(data)/10),size=255L,level=deflate_level)
+#   }else{
+#     rhdf5::h5createDataset(
+#       file=h5filename,
+#       dataset=d_path,showWarnings=F,
+#       dims=as.integer(length(data)),maxdims=as.integer(length(data)),
+#       storage.mode=storage.mode(data),chunk = as.integer(length(data)/10),level=deflate_level)
+#   }
+#   rhdf5::h5write(data,file=h5filename,name=d_path)
+# }
 
 read_2d_mat_h5 <- function(h5filename,groupname="/",dataname,bounds=NULL){
   stopifnot(length(unique(groupname))==1,
@@ -315,48 +394,95 @@ group_exists <- function(h5file,groupname){
   return(any(h5g==groupname))
 }
 
-list.datasets <- function(h5filename,groupname="/",subcols=NULL){
-  if(is.null(groupname)){
-    groupname <- "/"
+# list.datasets <- function(h5filename,groupname="/",subcols=NULL){
+#   if(is.null(groupname)){
+#     groupname <- "/"
+#   }
+#   if(substr(groupname,1,1)!="/"){
+#     groupname <- paste0("/",groupname)
+#   }
+#   if(is.null(subcols)){
+#     return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname) %>% dplyr::select(name) %>% dplyr::pull(1))
+#   }else{
+#     return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname,name %in% subcols) %>% dplyr::select(name) %>% dplyr::pull(1))
+#   }
+# }
+
+
+chunk_df_h5 <- function(filename,groupname,dataname,chunksize_row=NULL,chunksize_col=NULL){
+  data_dims <- EigenH5::get_dims_h5(filename = filename,groupname = groupname,dataname = dataname)
+  chunksize_row <- min(c(chunksize_row,data_dims[1]))
+  is_mat <- length(data_dims)==2
+  if(is_mat){
+    chunksize_col <- min(c(chunksize_col,data_dims[2]))
   }
-  if(substr(groupname,1,1)!="/"){
-    groupname <- paste0("/",groupname)
+  row_offset <-as.integer(seq.int(from = 0,to = data_dims[1]-1,by=chunksize_row))
+  row_chunksize <-as.integer(pmin(chunksize_row,data_dims[1]-row_offset))
+  h_df <-tibble::data_frame(row_offsets=row_offset,
+                              row_chunksizes=row_chunksize,
+                              filenames=filename,
+                              groupnames=groupname,
+                              datanames=dataname)
+
+  if(is_mat){
+    col_offset <-as.integer(seq.int(from = 0,to = data_dims[2]-1,by=chunksize_col))
+    col_chunksize <-as.integer(pmin(chunksize_col,data_dims[2]-col_offset))
+    h_df <-tibble::data_frame(col_offsets=col_offset,
+                                col_chunksizes=col_chunksize,
+                                filenames=filename,
+                                groupnames=groupname,
+                                datanames=dataname) %>%
+      dplyr::inner_join(h_df)
   }
-  if(is.null(subcols)){
-    return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname) %>% dplyr::select(name) %>% dplyr::pull(1))
-  }else{
-    return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname,name %in% subcols) %>% dplyr::select(name) %>% dplyr::pull(1))
-  }
+  return(h_df)
 }
 
 
-
-
-
-
-read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=list(NULL)){
-  library(rhdf5)
-  stopifnot(file.exists(h5filepath))
-  if(is.null(groupname)){
-    groupname <- "/"
-  }
-  if(substr(groupname,1,1)!="/"){
-    groupname <- paste0("/",groupname)
-  }
-  stopifnot(group_exists(h5filepath,groupname))
-
-  dsets <- list.datasets(h5filepath,groupname,subcols)
-  if(substr(groupname,nchar(groupname),nchar(groupname))!="/"){
-    groupname <- paste0(groupname,"/")
-  }
-  paths <- as.list(paste0(groupname,dsets))
-  names(paths) <- dsets
-  stopifnot(length(dsets)>0)
-  if(is.logical(filtervec)){
-    filtervec <- purrr::map(filtervec,which)
-  }
-  return(purrr::map_dfc(.x = paths,purrr::compose(c,rhdf5::h5read),file=h5filepath,index=filtervec))
+gen_outer_df <-function(col_chunk_df,row_chunk_df){
+  dplyr::inner_join(dplyr::select(col_chunk_df,col_offsets,col_chunksizes) %>% dplyr::mutate(c=NA),dplyr::select(row_chunk_df,row_offsets,row_chunksizes)%>% dplyr::mutate(c=NA)) %>%
+  dplyr::select(-c) %>% return()
 }
+
+
+gen_map_eqtl_df <- function(snpfile,expfile,uhfile,snp_chunksize=50000,exp_chunksize=10000){
+
+  snp_dims <-EigenH5::get_dims_h5(filename = snpfile,"/","dosage")
+  exp_dims <-EigenH5::get_dims_h5(expfile,"trait","ymat")
+  stopifnot(exp_dims[1]==snp_dims[2])
+  p <-snp_dims[1]
+  g <- exp_dims[2]
+  snp_chunksize <- min(snp_chunksize,p)
+  exp_chunksize <- min(exp_chunksize,g)
+
+
+
+}
+
+
+#
+# read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=list(NULL)){
+#   library(rhdf5)
+#   stopifnot(file.exists(h5filepath))
+#   if(is.null(groupname)){
+#     groupname <- "/"
+#   }
+#   if(substr(groupname,1,1)!="/"){
+#     groupname <- paste0("/",groupname)
+#   }
+#   stopifnot(group_exists(h5filepath,groupname))
+#
+#   dsets <- list.datasets(h5filepath,groupname,subcols)
+#   if(substr(groupname,nchar(groupname),nchar(groupname))!="/"){
+#     groupname <- paste0(groupname,"/")
+#   }
+#   paths <- as.list(paste0(groupname,dsets))
+#   names(paths) <- dsets
+#   stopifnot(length(dsets)>0)
+#   if(is.logical(filtervec)){
+#     filtervec <- purrr::map(filtervec,which)
+#   }
+#   return(purrr::map_dfc(.x = paths,purrr::compose(c,rhdf5::h5read),file=h5filepath,index=filtervec))
+# }
 
 
 ## #' write_list_h5
@@ -377,132 +503,134 @@ read_df_h5 <- function(h5filepath,groupname=NULL,subcols=NULL,filtervec=list(NUL
 
 
 
-
-#' write_mat_h5
-#' write a matrix to an HDF5 file
-#' @param h5file the name of the HDF5 file to write
-#' @param groupname the name of the group for the HDF5 file (can specify several groups, e.g 'a/b/c')
-#' @param dataname the name of the matrix in the file
-#' @param data the matrix to write, can be of any atomic type
-#' @param deflate_level integer specifying compression level
-#' @param doTranspose Bool indicating whether or not to write the data in row-major or column major order
-write_mat_h5 <- function(h5file, groupname="/", dataname, data, deflate_level = as.integer(c(0)),doTranspose=T){
-    library(rhdf5)
-    prep_h5file(h5file,create_dir=T)
-
-
-    groupname <- ifelse(groupname=="/","",groupname)
-    if(!group_exists(h5file,groupname)){
-        rhdf5::h5createGroup(h5file,groupname)
-    }
-    d_path <- paste0(groupname,"/",dataname)
-    if(doTranspose){
-        rhdf5::h5write(data,h5file,d_path)
-    }else{
-        rhdf5::h5write(t(data),h5file,d_path)
-    }
-
-    fh <- rhdf5::H5Fopen(h5file,flags = "H5F_ACC_RDWR")
-    dsp <-rhdf5::H5Oopen(fh,d_path)
-    transpose_wr <- ifelse(doTranspose,1L,0L)
-    rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
-    rhdf5::H5Oclose(dsp)
-    rhdf5::H5Fclose(fh)
-}
-
-#' write_df_h5
-#' Write a dataframe to an HDF5 file
-#' @param df dataframe to write (current support for nested/list dataframes is iffy)
-#' @param groupname name of group in which to write the dataframe, this will basically be the name of the dataframe in the HDF5 file
-#' @param outfile the name of the hdf5 file to write
-#' @param deflate_level integer specifying level of compression to apply, with higher indicating higher compression
-write_df_h5 <- function(df,groupname="/",outfile,deflate_level=4L){
-
-  prep_h5file(outfile,create_dir = T)
-
-
-  # dataname <- colnames(df)
-  # datapaths <-paste0(groupname,"/",dataname)
-
-  purrr::iwalk(df,
-               function(val,name,filename,groupname,deflate_level){
-                 write_vec(h5filename = filename,groupname = groupname,dataname = name,data = val,deflate_level=deflate_level)
-               },
-               filename=outfile,
-               groupname=groupname,
-               deflate_level=deflate_level)
-}
+#'
+#' #' write_mat_h5
+#' #' write a matrix to an HDF5 file
+#' #' @param h5file the name of the HDF5 file to write
+#' #' @param groupname the name of the group for the HDF5 file (can specify several groups, e.g 'a/b/c')
+#' #' @param dataname the name of the matrix in the file
+#' #' @param data the matrix to write, can be of any atomic type
+#' #' @param deflate_level integer specifying compression level
+#' #' @param doTranspose Bool indicating whether or not to write the data in row-major or column major order
+#' write_mat_h5 <- function(h5file, groupname="/", dataname, data, deflate_level = as.integer(c(0)),doTranspose=T){
+#'     library(rhdf5)
+#'     prep_h5file(h5file,create_dir=T)
+#'
+#'
+#'     groupname <- ifelse(groupname=="/","",groupname)
+#'     if(!group_exists(h5file,groupname)){
+#'         rhdf5::h5createGroup(h5file,groupname)
+#'     }
+#'     d_path <- paste0(groupname,"/",dataname)
+#'     if(doTranspose){
+#'         rhdf5::h5write(data,h5file,d_path)
+#'     }else{
+#'         rhdf5::h5write(t(data),h5file,d_path)
+#'     }
+#'
+#'     fh <- rhdf5::H5Fopen(h5file,flags = "H5F_ACC_RDWR")
+#'     dsp <-rhdf5::H5Oopen(fh,d_path)
+#'     transpose_wr <- ifelse(doTranspose,1L,0L)
+#'     rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
+#'     rhdf5::H5Oclose(dsp)
+#'     rhdf5::H5Fclose(fh)
+#' }
+#'
+#' #' write_df_h5
+#' #' Write a dataframe to an HDF5 file
+#' #' @param df dataframe to write (current support for nested/list dataframes is iffy)
+#' #' @param groupname name of group in which to write the dataframe, this will basically be the name of the dataframe in the HDF5 file
+#' #' @param outfile the name of the hdf5 file to write
+#' #' @param deflate_level integer specifying level of compression to apply, with higher indicating higher compression
+#' write_df_h5 <- function(df,groupname="/",outfile,deflate_level=4L){
+#'
+#'   # prep_h5file(outfile,create_dir = T)
+#'
+#'
+#'   # dataname <- colnames(df)
+#'   # datapaths <-paste0(groupname,"/",dataname)
+#'
+#'   purrr::iwalk(df,
+#'                function(val,name,filename,groupname,deflate_level){
+#'                  EigenH5::write_vector_h5(filename = filename,
+#'                                           groupname = groupname,
+#'                                           dataname = name,
+#'                                           data = val)
+#'                },
+#'                filename=outfile,
+#'                groupname=groupname,
+#'                deflate_level=deflate_level)
+#' }
 
 
 gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
-  library(rhdf5)
+  # library(rhdf5)
 
   if(class(gdsfile)=="character"){
     gds <- SeqArray::seqOpen(gdsfile)
   }else{
     gds <- gdsfile
   }
-  snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=T,map = T,info=T,more=list(rs="annotation/id"))
-  write_df_h5(df = snp_info,
-              groupname = "SNPinfo",
-              outfile=hdf5file,
-              deflate_level = deflate_level)
-  dosage2hdf5(gds=gds,hdf5file=hdf5file,deflate_level=deflate_level)
-
-
-
+  snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
+    dplyr::mutate(chr=as.integer(chr)) %>%
+    dplyr::arrange(chr,pos) %>% dplyr::mutate(nsnp_id=1:n())
+  stopifnot(dplyr::group_by(snp_info,chr) %>%
+              dplyr::summarise(is_sorted=!is.unsorted(snp_id)) %>%
+              dplyr::summarise(is_sorted=all(is_sorted)) %>%
+              dplyr::pull(1))
+  dosage2hdf5(gds=gds,hdf5file=hdf5file,snp_info=snp_info)
+  snp_info <- dplyr::mutate(snp_info,snp_id=nsnp_id) %>% dplyr::select(-nsnp_id)
+  EigenH5::write_df_h5(df = snp_info,
+                       groupname = "SNPinfo",
+                       outfile=hdf5file)
 }
 
 
-dosage2hdf5 <- function(gds,hdf5file,chunksize=5000L,deflate_level=4L){
-  library(rhdf5)
+dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
+  #library(rhdf5)
   p <- calc_p(gds)
   N <- calc_N(gds)
-  dims <- c(p,N)
+  dims <- as.integer(c(p,N))
   is_haplo <- is_haplo(gds)
   if(!dir.exists(dirname(hdf5file))){
     dir.create(dirname(hdf5file))
   }
   if(!file.exists(hdf5file)){
-    h5createFile(hdf5file)
+   # h5createFile(hdf5file)
   }
-  h5createDataset(file = hdf5file,
-                  dataset = "dosage",
-                  dims = dims,maxdims = dims,
-                  storage.mode ="double",chunk = c(chunksize,N),
-                  level = deflate_level,
-                  showWarnings = F)
-
-  fh <- rhdf5::H5Fopen(hdf5file,flags = "H5F_ACC_RDWR")
-  dsp <-rhdf5::H5Oopen(fh,"dosage")
-  transpose_wr <- 1L
-  rhdf5::h5writeAttribute(transpose_wr,dsp,"doTranspose")
-  rhdf5::H5Oclose(dsp)
-  rhdf5::H5Fclose(fh)
-
-
-
-  write_chunk <-function(index,x,h5loc,is_haplo){
+  EigenH5::create_matrix_h5(filename = hdf5file,
+                            groupname = "/",
+                            dataname = "dosage",
+                            dims = dims,data=numeric(),
+                            doTranspose = F,
+                            chunksizes = as.integer(c(chunksize,N)))
+  write_chunk <-function(index,x,h5loc,is_haplo,N){
     if(is_haplo){
       tobj <- t(2.0-x)
     }else{
       tobj <- t(x)
     }
-    h5write(obj=tobj,
-            file=h5loc,
-            name="dosage",
-            start=c(index,1))
+    tp <-nrow(tobj)
+    oindex_r <-snp_info$nsnp_id[seq.int(from=index,length.out = tp)]
+    oindex <- oindex_r[1]
+    stopifnot(all(oindex_r==seq.int(from=oindex,length.out = tp)))
+    stopifnot(ncol(tobj)==N)
+    stopifnot(all(tobj>=0))
+    EigenH5::write_matrix_h5(filename = h5loc,
+                                  groupname="/",
+                                  dataname="dosage",
+                                  offsets = c(oindex-1,0L),
+                             data = tobj)
+
   }
-
-
-
-
+  # chrs <-as.character(unique(snp_info$chr))
 
   seqBlockApply(gdsfile = gds,
                 var.name = "$dosage",
                 FUN =write_chunk,
                 h5loc=hdf5file,
                 is_haplo=is_haplo,
+                N=N,
                 var.index="relative")
 
 }

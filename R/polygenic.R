@@ -87,13 +87,13 @@ polygenic.model <- function (X, y, h) {
 
 
 
-polygenic.model_svd <- function(U,D,y,h,sx,p){
+polygenic.model_svd <- function(U,D,y,h,sx,p,N){
 
 
   cat("Acquiring prior settings.\n")
 
   sa <- p*h/(1-h)/sx
-  N <- nrow(U)
+  # N <- nrow(U)
 
   # Compute the kinship matrix.
 
