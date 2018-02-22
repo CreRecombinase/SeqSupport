@@ -1,5 +1,4 @@
 #include "EigenH5.h"
-#include "range/v3/all.hpp"
 #include <RcppEigen.h>
 // [[Rcpp::depends(RcppEigen,BH)]]
 // [[Rcpp::depends(RcppProgress)]]
