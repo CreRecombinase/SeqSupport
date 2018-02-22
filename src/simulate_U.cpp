@@ -8,7 +8,7 @@
 
 #include <iterator>
 #include<H5Tpublic.h>
-#include "mkl_lapacke.h"
+//#include "mkl_lapacke.h"
 
 //[[Rcpp::export]]
 void map_eQTL_h5(const Rcpp::StringVector SNP_path,
