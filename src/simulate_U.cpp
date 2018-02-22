@@ -4,7 +4,7 @@
 // [[Rcpp::depends(RcppProgress)]]
 #include <progress.hpp>
 #include <progress_bar.hpp>
-//[[Rcpp::plugins(cpp17)]]
+//[[Rcpp::plugins(cpp14)]]
 
 #include <iterator>
 #include<H5Tpublic.h>
