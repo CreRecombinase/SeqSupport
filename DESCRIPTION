@@ -8,7 +8,7 @@ Description: `SeqSupport` provides a series of functions for importing data from
     various genetics/genomics formats for use with `LDshrink` or any of the `RSS` packages,
     including `RSSp` and `RSSR`.
 License: GPL (>= 3)
-Imports: Rcpp (>= 0.12.10), RcppEigen (>= 0.3.2.9.1),dplyr,progress,BBmisc,LDshrink,RSSp,tidyr,purrr,magrittr
+Imports: Rcpp (>= 0.12.10), RcppEigen (>= 0.3.2.9.1),dplyr,progress,BBmisc,tidyr,purrr,magrittr
 LinkingTo: Rcpp, RcppEigen,Rhdf5lib,EigenH5,libblosc,RcppProgress
-Remotes: bioc::IRanges,bioc::SeqArray, CreRecombinase::Rhdf5lib,CreRecombinase/libblosc,CreRecombinase/EigenH5
+Remotes: bioc::IRanges,bioc::SeqArray, CreRecombinase/Rhdf5lib,CreRecombinase/libblosc,CreRecombinase/RSSp,CreRecombinase/EigenH5,stephenslab/LDshrink
 Suggests: testthat
