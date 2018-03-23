@@ -313,19 +313,8 @@ group_exists <- function(h5file,groupname){
   return(any(h5g==groupname))
 }
 
-# list.datasets <- function(h5filename,groupname="/",subcols=NULL){
-#   if(is.null(groupname)){
-#     groupname <- "/"
-#   }
-#   if(substr(groupname,1,1)!="/"){
-#     groupname <- paste0("/",groupname)
-#   }
-#   if(is.null(subcols)){
-#     return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname) %>% dplyr::select(name) %>% dplyr::pull(1))
-#   }else{
-#     return(rhdf5::h5ls(h5filename) %>% dplyr::filter(group==groupname,name %in% subcols) %>% dplyr::select(name) %>% dplyr::pull(1))
-#   }
-# }
+
+
 
 
 chunk_df_h5 <- function(filename,groupname,dataname,chunksize_row=NULL,chunksize_col=NULL){
@@ -498,7 +487,9 @@ gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
               dplyr::summarise(is_sorted=all(is_sorted)) %>%
               dplyr::pull(1))
   dosage2hdf5(gds=gds,hdf5file=hdf5file,snp_info=snp_info)
-  snp_info <- dplyr::mutate(snp_info,snp_id=nsnp_id) %>% dplyr::select(-nsnp_id)
+    snp_info <- dplyr::mutate(snp_info,snp_id=nsnp_id) %>% dplyr::select(-nsnp_id)
+    sample_info <- tibble::data_frame(sample_id=seqGetData(gds,"sample.id"))
+    write_df_h5(sample_info,"SampleInfo",hdf5file)
   EigenH5::write_df_h5(df = snp_info,
                        groupname = "SNPinfo",
                        outfile=hdf5file)
@@ -517,10 +508,17 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
   if(!file.exists(hdf5file)){
    # h5createFile(hdf5file)
   }
+  chunksize_max <- 1024^2
+  if(prod(c(chunksize,N))>chunksize_max){
+    tchunksize <-as.integer(ceiling((chunksize_max/N)/2))
+    warning(paste0("chunksize: ",chunksize," is too big, resizing to",tchunksize))
+    chunksize <-tchunksize
+  }
   EigenH5::create_matrix_h5(filename = hdf5file,
                             groupname = "/",
                             dataname = "dosage",
-                            dims = dims,data=numeric(),
+                            dims = dims,
+                            data=numeric(),
                             doTranspose = F,
                             chunksizes = as.integer(c(chunksize,N)))
   write_chunk <-function(index,x,h5loc,is_haplo,N){

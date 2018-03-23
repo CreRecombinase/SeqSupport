@@ -12,6 +12,7 @@
 // [[Rcpp::interfaces(cpp)]]
 
 #include "blosc_filter.h"
+#include "blosc.h"
 #include "hdf5.h"
 #include <string.h>
 

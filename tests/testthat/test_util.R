@@ -20,6 +20,15 @@ test_that("matching SNPs to regions works with one chromosome",{
   expect_equal(snp_ct$num_snps,snp_ct$n_snps)
 })
 
+test_that("boost_transpose",{
+am <- matrix(as.numeric(1:18),9,2)
+oam <-matrix(as.numeric(1:18),9,2)
+tam <- matrix(as.numeric(1:18),9,2,byrow = T)
+test_transpose_matrix(am)
+
+})
+
+
 test_that("convert to and from GDS",{
 
   snp_df <- sim_snp_df()

@@ -38,39 +38,18 @@ RcppExport SEXP _SeqSupport_blosc() {
     UNPROTECT(1);
     return rcpp_result_gen;
 }
-// haplo_2_geno
-Eigen::MatrixXd haplo_2_geno(const Eigen::MatrixXd haplo, bool snps_in_rows);
-RcppExport SEXP _SeqSupport_haplo_2_geno(SEXP haploSEXP, SEXP snps_in_rowsSEXP) {
+// cont_reg
+Rcpp::DataFrame cont_reg(Rcpp::IntegerVector input_rows, Rcpp::IntegerVector input_cols, Rcpp::IntegerVector chunksizes, Rcpp::IntegerVector dimsize, int chunk_group);
+RcppExport SEXP _SeqSupport_cont_reg(SEXP input_rowsSEXP, SEXP input_colsSEXP, SEXP chunksizesSEXP, SEXP dimsizeSEXP, SEXP chunk_groupSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Eigen::MatrixXd >::type haplo(haploSEXP);
-    Rcpp::traits::input_parameter< bool >::type snps_in_rows(snps_in_rowsSEXP);
-    rcpp_result_gen = Rcpp::wrap(haplo_2_geno(haplo, snps_in_rows));
-    return rcpp_result_gen;
-END_RCPP
-}
-// haplo_2_geno_i
-Eigen::MatrixXi haplo_2_geno_i(const Eigen::MatrixXi haplo, bool snps_in_rows);
-RcppExport SEXP _SeqSupport_haplo_2_geno_i(SEXP haploSEXP, SEXP snps_in_rowsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Eigen::MatrixXi >::type haplo(haploSEXP);
-    Rcpp::traits::input_parameter< bool >::type snps_in_rows(snps_in_rowsSEXP);
-    rcpp_result_gen = Rcpp::wrap(haplo_2_geno_i(haplo, snps_in_rows));
-    return rcpp_result_gen;
-END_RCPP
-}
-// match_sorted_exp
-Rcpp::IntegerVector match_sorted_exp(const Rcpp::IntegerVector& query, const Rcpp::IntegerVector& target);
-RcppExport SEXP _SeqSupport_match_sorted_exp(SEXP querySEXP, SEXP targetSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type query(querySEXP);
-    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type target(targetSEXP);
-    rcpp_result_gen = Rcpp::wrap(match_sorted_exp(query, target));
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type input_rows(input_rowsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type input_cols(input_colsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type chunksizes(chunksizesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type dimsize(dimsizeSEXP);
+    Rcpp::traits::input_parameter< int >::type chunk_group(chunk_groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(cont_reg(input_rows, input_cols, chunksizes, dimsize, chunk_group));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -110,6 +89,34 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type quh_dff(quh_dffSEXP);
     crossprod_quh_h5(q_dff, uh_dff, quh_dff);
     return R_NilValue;
+END_RCPP
+}
+// sim_U_exp
+Eigen::MatrixXd sim_U_exp(const int n, Eigen::VectorXd tsigu);
+RcppExport SEXP _SeqSupport_sim_U_exp(SEXP nSEXP, SEXP tsiguSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< Eigen::VectorXd >::type tsigu(tsiguSEXP);
+    rcpp_result_gen = Rcpp::wrap(sim_U_exp(n, tsigu));
+    return rcpp_result_gen;
+END_RCPP
+}
+// simulate_y_h5
+Eigen::MatrixXd simulate_y_h5(const Rcpp::DataFrame in_dff, const Rcpp::DataFrame out_dff, const int p, const int N, const int g, Eigen::ArrayXd& tsigu);
+RcppExport SEXP _SeqSupport_simulate_y_h5(SEXP in_dffSEXP, SEXP out_dffSEXP, SEXP pSEXP, SEXP NSEXP, SEXP gSEXP, SEXP tsiguSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type in_dff(in_dffSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::DataFrame >::type out_dff(out_dffSEXP);
+    Rcpp::traits::input_parameter< const int >::type p(pSEXP);
+    Rcpp::traits::input_parameter< const int >::type N(NSEXP);
+    Rcpp::traits::input_parameter< const int >::type g(gSEXP);
+    Rcpp::traits::input_parameter< Eigen::ArrayXd& >::type tsigu(tsiguSEXP);
+    rcpp_result_gen = Rcpp::wrap(simulate_y_h5(in_dff, out_dff, p, N, g, tsigu));
+    return rcpp_result_gen;
 END_RCPP
 }
 // map_eQTL_chunk_h5
@@ -156,12 +163,12 @@ RcppExport SEXP _SeqSupport_RcppExport_registerCCallable() {
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SeqSupport_blosc", (DL_FUNC) &_SeqSupport_blosc, 0},
-    {"_SeqSupport_haplo_2_geno", (DL_FUNC) &_SeqSupport_haplo_2_geno, 2},
-    {"_SeqSupport_haplo_2_geno_i", (DL_FUNC) &_SeqSupport_haplo_2_geno_i, 2},
-    {"_SeqSupport_match_sorted_exp", (DL_FUNC) &_SeqSupport_match_sorted_exp, 2},
+    {"_SeqSupport_cont_reg", (DL_FUNC) &_SeqSupport_cont_reg, 5},
     {"_SeqSupport_map_eQTL_h5", (DL_FUNC) &_SeqSupport_map_eQTL_h5, 5},
     {"_SeqSupport_crossprod_h5", (DL_FUNC) &_SeqSupport_crossprod_h5, 3},
     {"_SeqSupport_crossprod_quh_h5", (DL_FUNC) &_SeqSupport_crossprod_quh_h5, 3},
+    {"_SeqSupport_sim_U_exp", (DL_FUNC) &_SeqSupport_sim_U_exp, 2},
+    {"_SeqSupport_simulate_y_h5", (DL_FUNC) &_SeqSupport_simulate_y_h5, 6},
     {"_SeqSupport_map_eQTL_chunk_h5", (DL_FUNC) &_SeqSupport_map_eQTL_chunk_h5, 4},
     {"_SeqSupport_read_ld_chunk_h5", (DL_FUNC) &_SeqSupport_read_ld_chunk_h5, 2},
     {"_SeqSupport_RcppExport_registerCCallable", (DL_FUNC) &_SeqSupport_RcppExport_registerCCallable, 0},

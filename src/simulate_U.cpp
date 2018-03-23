@@ -2,13 +2,21 @@
 #include <RcppEigen.h>
 // [[Rcpp::depends(RcppEigen,BH)]]
 // [[Rcpp::depends(RcppProgress)]]
+//[[Rcpp::depends(RcppParallel)]]
+
 #include <progress.hpp>
 #include <progress_bar.hpp>
-//[[Rcpp::plugins(cpp14)]]
-
+#include "boost/multi_array.hpp"
+//[[Rcpp::plugins(cpp17)]]
+#include "eigenmvn.h"
 #include <iterator>
 #include<H5Tpublic.h>
-//#include "mkl_lapacke.h"
+// #ifdef USE_MKL
+// #include "mkl.h"
+// #include "mkl_lapacke.h"
+// #endif
+
+
 
 //[[Rcpp::export]]
 void map_eQTL_h5(const Rcpp::StringVector SNP_path,
@@ -137,7 +145,7 @@ void map_eQTL_h5(const Rcpp::StringVector SNP_path,
   }
 }
 
-//[[Rcpp::export]]
+
 void crossprod_h5(Rcpp::StringVector filenames,Rcpp::StringVector groupnames,Rcpp::StringVector datanames){
   const std::string infile_1=Rcpp::as<std::string>(filenames[0]);
   const std::string infile_2=Rcpp::as<std::string>(filenames[1]);
@@ -195,30 +203,6 @@ void crossprod_h5(Rcpp::StringVector filenames,Rcpp::StringVector groupnames,Rcp
 }
 
 
-// template<int N>
-// struct H5Sel{
-//   const std::string &groupname;
-//   const std::string &dataname;
-//   std::array<size_t,N> offset;
-//   std::array<size_t,N> chunksize;
-//   std::array<size_t,N> data_dimensions;
-//   H5Sel(const std::string &groupname_,const std::string &dataname_,std::array<size_t,N> offset_,std::array<size_t,N> chunksize_):
-//     groupname(groupname_),
-//     dataname(dataname_),
-//     offset(offset_),
-//     chunksize(chunksize_){};
-//   auto make_sel(HighFive::File &file){
-//     auto grp =file.getGroup(groupname);
-//     auto dset = grp.getDataSet(dataname);
-//     std::copy_n(dset.getDataDimensions().begin(),N,data_dimensions.begin());
-//     for(auto i=0;i<N;i++ ){
-//       if(offset[i]+chunksize[i]>data_dimensions[i]){
-//         Rcpp::stop("offset+chunksize greater than extent");
-//       }
-//     }
-//     return(dset.selectEigen(std::vector<size_t>(offset.begin(),offset.end()),std::vector<size_t>(chunksize.begin(),chunksize.end()),{}));
-//   }
-// };
 
 
 
@@ -249,12 +233,16 @@ void crossprod_quh_h5(const Rcpp::DataFrame q_dff ,const Rcpp::DataFrame uh_dff,
   Rowmat Q;
   Rowmat uh;
   Rowmat Quh;
-
+  Rcpp::Rcerr<<"Using "<<Eigen::nbThreads( )<<" threads"<<std::endl;
   Progress prog_bar(in1_size, true);
   for(int i=0; i<in1_size; i++){
+    //    Rcpp::Rcerr<<"Reading Q"<<std::endl;
     Q_f.read(i,Q);
+    //    Rcpp::Rcerr<<"Reading uh"<<std::endl;
     uh_f.read(i,uh);
+    //    Rcpp::Rcerr<<"Computing crossprod(Q,uh)"<<std::endl;
     Quh.noalias() = Q.transpose()*uh;
+    //    Rcpp::Rcerr<<"Writing quh"<<std::endl;
     Quh_f.write(i,Quh);
     prog_bar.increment();
   }
@@ -298,7 +286,74 @@ void read_ld_chunk_mat_h5(const std::string filename,const int ld_chunk,Eigen::M
 }
 
 
+void sim_U(const int p, Eigen::VectorXd tsigu, Eigen::MatrixXd &eX){
+  const int g=tsigu.size();
+  if(g!=eX.cols() || p!=eX.rows()){
+    eX.resize(p,g);
+    //    Rcpp::stop("X.cols()!=tvaru.size()");
+  }
+  for(int i=0; i<g;i++){
+    for(int j=0;j<p;j++){
+      eX(j, i) = R::rnorm(0,tsigu(i));
+    }
+  }
+}
 
+
+//[[Rcpp::export(name="sim_U")]]
+Eigen::MatrixXd sim_U_exp(const int n, Eigen::VectorXd tsigu){
+  const int g=tsigu.size();
+  Eigen::MatrixXd X;
+  sim_U(n,tsigu,X);
+  return(X);
+}
+
+
+
+  // return(Eigen::EigenMultivariateNormal<double>(Eigen::ArrayXd::Zero(p),tvaru.asDiagonal(),true).samples(n).transpose());
+// }
+
+//[[Rcpp::export]]
+Eigen::MatrixXd simulate_y_h5(const Rcpp::DataFrame in_dff ,const Rcpp::DataFrame out_dff,const int p, const int N,const int g,Eigen::ArrayXd &tsigu){
+  auto r = register_blosc(nullptr,nullptr);
+
+  using Mat=Eigen::MatrixXd;
+  std::unordered_map<std::string,std::shared_ptr<HighFive::File> >  m_file_map;
+  std::unordered_map<std::string,std::shared_ptr<HighFive::Group> >  m_group_map;
+  std::unordered_map<std::string,std::shared_ptr<HighFive::DataSet> > m_dataset_map;
+  MatSlices input_f(in_dff,m_file_map,m_group_map,m_dataset_map,true);
+  MatSlices output_f(out_dff,m_file_map,m_group_map,m_dataset_map,false);
+  Mat X;
+  // Mat y(N,g);
+  Mat Beta;
+  Mat U;
+  Mat Y=Mat::Zero(N,g);
+  Eigen::VectorXd S;
+  const int num_reg=std::distance(input_f.chunk_map.begin(),input_f.chunk_map.end());
+  Progress prog_bar(num_reg, true);
+
+
+  // values near the mean are the most likely
+  // standard deviation affects the dispersion of generated values from the mean
+
+  for(auto m_it=input_f.chunk_map.begin();m_it!=input_f.chunk_map.end();m_it++){
+    int chunk_id = m_it->first;
+    input_f.read_chunk(chunk_id,"dosage",X);
+    if(X.rows()!=N){
+      X.transposeInPlace();
+    }
+    X = X.rowwise()-X.colwise().mean();
+    S = (1/(X.array().square().colwise().sum()/(N-1)).sqrt())*(1/std::sqrt(N-1));
+    output_f.write_chunk(chunk_id,"S",S);
+    const size_t tp=X.cols();
+    sim_U(tp,tsigu,U);
+    Beta=U.array().colwise()*S.array();
+    Y=Y+X*Beta;
+    Beta.transposeInPlace();
+    output_f.write_chunk(chunk_id,"Beta",Beta);
+  }
+  return(Y);
+}
 
 
 //[[Rcpp::export]]
@@ -308,14 +363,14 @@ void map_eQTL_chunk_h5(const Rcpp::DataFrame snp_dff ,const Rcpp::DataFrame exp_
   using Rowarray = Eigen::Array<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor>;
 
   using namespace HighFive;
-   register_blosc(nullptr,nullptr);
+  register_blosc(nullptr,nullptr);
 
   const size_t snp_rsize = snp_dff.rows();
   const size_t exp_rsize = exp_dff.rows();
 
   const size_t out_wsize = uhat_dff.rows();
 
-
+  Rcpp::Rcerr<<"Using "<<Eigen::nbThreads( )<<" threads"<<std::endl;
   if(se_dff.rows()!=out_wsize){
     Rcpp::Rcerr<<"snp_dff has "<<snp_rsize<<" rows"<<std::endl;
     Rcpp::Rcerr<<"exp_dff has "<<exp_rsize<<" rows"<<std::endl;
@@ -343,12 +398,6 @@ void map_eQTL_chunk_h5(const Rcpp::DataFrame snp_dff ,const Rcpp::DataFrame exp_
 
   std::vector<int> SNP_dims=SNP_f.dims(0);
   std::vector<int> EXP_dims=EXP_f.dims(0);
-
-
-
-
-
-
   MatSlices uh_f(uhat_dff,m_file_map,m_group_map,m_dataset_map,false);
   MatSlices se_f(se_dff,m_file_map,m_group_map,m_dataset_map,false);
 
@@ -374,6 +423,7 @@ void map_eQTL_chunk_h5(const Rcpp::DataFrame snp_dff ,const Rcpp::DataFrame exp_
     const int N=EXP_chunk.rows();
     EXP_chunk = EXP_chunk.rowwise()-EXP_chunk.colwise().mean();
     sy2=EXP_chunk.array().square().colwise().sum();
+    
     for(int j=0;j<snp_rsize;j++){
       SNP_f.read(j,SNP_chunk);
       if(SNP_first){
@@ -396,58 +446,20 @@ void map_eQTL_chunk_h5(const Rcpp::DataFrame snp_dff ,const Rcpp::DataFrame exp_
         for(int k=0; k<g;k++){
           se_chunk(l,k)=std::sqrt((1/(static_cast<double>(N-1)*sx2(l)))*(EXP_chunk.col(k)-(SNP_chunk.col(l)*UH_chunk(l,k))).array().square().sum());
         }
-        // se_chunk.col(j)=(sy2(j)/(static_cast<double>(N-1)*sx2)).sqrt();
       }
       UH_chunk=UH_chunk.array()/se_chunk.array();
+      
       uh_f.write(rk,UH_chunk);
       se_f.write(rk,se_chunk);
+      
       rk++;
+      
       prog_bar.increment();
     }
   }
 }
 
 
-
-// void svd_h5_mkl(const std::string ih5file,
-//                 const std::string igname,
-//                 const std::string idname,
-//                 const std::string oh5file,
-//                 const std::string ogname,
-//                 const std::string odname
-//                 ){
-//
-//
-//   Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor> rm;
-//   using namespace HighFive;
-//   File inf(ih5file,File::ReadOnly);
-//   inf.getGroup(igname).getDataSet(idname).read(rm);
-//   const size_t m=rm.rows();
-//   // const size_t ldu
-//   const size_t n=rm.cols();
-//   Eigen::ArrayXf s(n);
-//   Eigen::MatrixXf (n);
-//
-//
-//   auto info =LAPACKE_sgesvd(LAPACK_ROW_MAJOR,)
-//
-// }
-
-
-
-// struct Matrix
-// {
-//   Matrix(size_t rows, size_t cols) : _cells(), _rows(rows), _cols(cols) { }
-//
-//   double       & data(size_t col, size_t row)       { return _cells.at(row).at(col); }
-//   const double & data(size_t col, size_t row) const { return _cells.at(row).at(col); }
-//
-//   size_t columns() const { return _cols; }
-//   size_t rows()    const { return _rows; }
-//
-//   size_t _rows, _cols;
-//   Eigen::MatrixXi _cells;
-// };
 
 
 //[[Rcpp::export]]
@@ -457,66 +469,4 @@ Rcpp::NumericMatrix read_ld_chunk_h5(const std::string filename,const int ld_chu
   return(Rcpp::wrap(retmat));
 }
 
-//
-// Rcpp::DataFrame intersect_snps(Rcpp::DataFrame &dfa,Rcpp::DataFrame &dfb){
-//
-//   Rcpp::IntegerVector chr_a=dfa["chr"];
-//   Rcpp::IntegerVector chr_b=dfb["chr"];
-//
-//   Rcpp::IntegerVector pos_a=dfa["pos"];
-//   Rcpp::IntegerVector pos_b=dfb["pos"];
-//
-//   Rcpp::IntegerVector idx_a=dfa["snp_id"];
-//   Rcpp::IntegerVector idx_b=dfb["snp_id"];
-//
-//   const size_t a_size=chr_a.size();
-//   const size_t b_size=chr_b.size();
-//   std::vector<int> chr_a_ret,chr_b_ret,pos_a_ret,pos_b_ret,idx_a_ret,idx_b_ret;
-//
-//
-//   chr_a_ret.reserve(a_size);
-//   chr_b_ret.reserve(b_size);
-//
-//   pos_a_ret.reserve(a_size);
-//   pos_b_ret.reserve(b_size);
-//
-//   idx_a_ret.reserve(a_size);
-//   idx_b_ret.reserve(b_size);
-//   const size_t small_size= a_size < b_size ? a_size : b_size;
-//   size_t ib=0;
-//   size_t ia=0;
-//   while(true){
-//     auto a_pos = std::make_pair(chr_a[ia],pos_a[ia]);
-//     auto b_pos = std::make_pair(chr_b[ib],pos_b[ib]);
-//     if(a_pos==b_pos){
-//       chr_a_ret.push_back(a_pos.first);
-//       pos_a_ret.push_back(a_pos.second);
-//       idx_a_ret.push_back(idx_a[ia]);
-//       chr_b_ret.push_back(b_pos.first);
-//       pos_b_ret.push_back(b_pos.second);
-//       idx_b_ret.push_back(idx_b[ib]);
-//     }else{
-//       if(a_pos<b_pos){
-//         if(ia==a_size){
-//           break;
-//         }
-//         ia++;
-//       }else{
-//         if(a_pos>b_pos){
-//           if(ib==b_size){
-//             break;
-//           }
-//           ib++;
-//         }
-//       }
-//     }
-//   }
-//   using namespace Rcpp;
-// return(DataFrame::create(_["chr"]=wrap(chr_a),
-//                          _["pos"]=wrap(pos_a),
-//                          _["pos_a"]=wrap(pos_a),
-//
-//                          )
-// }
 
-//
