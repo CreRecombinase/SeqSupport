@@ -17,6 +17,20 @@ read_SNPinfo <- function(snpfile,chr_to_char=T, extra_cols = NULL, id_col=NULL){
   return(snp_df)
 }
 
+
+waitr <- function(listres,timeout=Inf){
+  num_p <- length(listres)
+  num_f <-sum(purrr::map_lgl(listres,resolved))
+  pb <- progress::progress_bar$new(total = num_p)
+  while(num_f<num_p){
+    Sys.sleep(0.5)
+    num_f <-sum(purrr::map_lgl(listres,resolved))
+    pb$update(num_f/num_p)
+  }
+  return(listres)
+}
+
+
 read_SNPinfo_allel <- function(snpfile,groupname="variants"){
 
   objd <- EigenH5::get_objs_h5(snpfile,"variants")
@@ -34,6 +48,48 @@ read_SNPinfo_allel <- function(snpfile,groupname="variants"){
 }
 
 
+
+match_df_h5 <- function(df,output_filenames,
+                        output_group_prefix,
+                        output_datanames,isVector=F){
+    chunksize_max<-1024
+    output_dff <-dplyr::mutate(df,
+                               create_dynamic=F,
+                               row_offsets=0L,
+                               col_offsets=0L,
+                               datatypes="numeric",
+                               col_chunksizes=row_chunksizes,
+                               col_c_chunksizes=pmin(chunksize_max,col_chunksizes),
+                               row_c_chunksizes=col_c_chunksizes,
+                               filenames=output_filenames,
+                               groupnames=paste0(output_group_prefix,"/",chunk_group),
+                               datanames=output_datanames)
+    if(isVector){
+        output_dff <- output_dff %>% dplyr::mutate(col_chunksizes=1L,col_c_chunksizes=1L)
+    }
+    return(output_dff)
+}
+
+
+
+cross_df_h5 <- function(df_rows,df_cols,output_filenames,
+                     output_groupnames,
+                     output_datanames){
+    uh_dff <- dplyr::inner_join(dplyr::mutate(df_cols,col=NA,mid=1:n()),
+                                dplyr::mutate(df_rows,col=NA,mid=1:n()),
+                                by="col",suffix=c("_cols","_rows")) %>%
+        dplyr::mutate(filenames=output_filenames,
+                      groupnames=output_groupnames,
+                      datanames=output_datanames)
+
+    ret_dff <- uh_dff %>% dplyr::arrange(mid_cols,mid_rows)%>%
+      dplyr::select(filenames,groupnames,datanames,
+                                 row_offsets=row_offsets_rows,
+                                 row_chunksizes=row_chunksizes_rows,
+                                 col_offsets=row_offsets_cols,
+                                 col_chunksizes=row_chunksizes_cols)
+    return(ret_dff)
+}
 
 
 read_vec <- function(h5filename,datapath){
@@ -168,21 +224,6 @@ get_colnum_h5 <- function(hdf5file,datapath){
 }
 
 
-LDshrink_write <- function(H,map,region_id,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T){
-  R <-LDshrink::calcLD(t(H),map,m=m,Ne=Ne,cutoff=cutoff)
-
-  # write_df_h5(df=si,groupname = "LDinfo",outfile = outfile,deflate_level = 4)
-  # tls <- h5ls(outfile)
-  # tls <- paste0(tls$group,"/",tls$name)
-  # stopifnot(any("/LDinfo/SNP" %in% tls))
-  write_mat_h5(outfile,groupname = as.character(region_id),dataname = "R",data = R,deflate_level = 4,doTranspose = F)
-  if(evd){
-    eigenR <- eigen(R)
-    stopifnot(min(eigenR$values)>0)
-    write_mat_h5(outfile,groupname=as.character(region_id),dataname = "Q",data = eigenR$vectors,deflate_level = 0L)
-    write_vec(outfile,groupname=as.character(region_id),dataname = "D",data = eigenR$values,deflate_level = 2L)
-  }
-}
 
 
 
@@ -194,52 +235,6 @@ split_i <- function(p,i=1,chunksize,retl=list()){
   }
   retl[[length(retl)+1]] <- i:(i+chunksize-1)
   return(split_i(p,i+chunksize,chunksize,retl))
-}
-
-chr_LDshrink_h5 <- function(hdf5file,chrom,outfile=NULL,m=85,Ne=11490.672741,cutoff=1e-3,evd=T,chunksize){
-  library(rhdf5)
-
-  snp_info <- read_df_h5(hdf5file,"SNPinfo") %>% mutate(index=1:n()) %>% filter(chr==chrom)
-  H <- t(RcppEigenH5::read_2d_mat_h5(h5file = hdf5file,groupname = "",dataname = "dosage"))[,snp_info$index]
-  mapdat <-snp_info$map
-  p <- length(mapdat)
-  num_chunks <- ceiling(p/chunksize)
-  ldparms <- c(m,Ne,cutoff,calc_theta(m))
-  ivec <- split_i(p,1,chunksize)
-
-  for(i in 1:length(ivec)){
-    for(j in 1:length(ivec)){
-      tR <- calcLD_par(hmat = H,map = mapdat,ldparams = ldparms,id = as.integer(c(i-1,j-1,chunksize)))
-      # write_mat_chunk_h5()
-      # cat(i,"_",j,"_",nrow(tR),"_",ncol(tR),"\n")
-      # ntot_R[ivec[[i]],ivec[[j]]] <-tR
-    }
-  }
-
- # R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
-
-
-
-  stopifnot(file.exists(gds_file),!is.null(outfile))
-  gds <- SeqArray::seqOpen(gds_file,readonly = T)
-  filter_region_id(gds,region_id)
-
-  si <- read_SNPinfo_gds(gds) %>% dplyr::mutate(region_id=region_id)
-  R <- calc_LD_gds(gds,m=m,Ne=Ne,cutoff=cutoff)
-
-
-  write_df_h5(df=si,groupname = "LDinfo",outfile = outfile,deflate_level = 4)
-  tls <- h5ls(outfile)
-  tls <- paste0(tls$group,"/",tls$name)
-  stopifnot(any("/LDinfo/SNP" %in% tls))
-  write_mat_h5(outfile,groupname = "LD",dataname = "R",data = R,deflate_level = 4,doTranspose = F)
-  if(evd){
-    eigenR <- eigen(R)
-    stopifnot(min(eigenR$values)>0)
-    write_mat_h5(outfile,groupname="EVD",dataname = "Q",data = eigenR$vectors,deflate_level = 0L)
-    write_vec(outfile,groupname="EVD",dataname = "D",data = eigenR$values,deflate_level = 2L)
-  }
-  return(dim(R))
 }
 
 
@@ -272,29 +267,7 @@ chr_LDshrink_h5 <- function(hdf5file,chrom,outfile=NULL,m=85,Ne=11490.672741,cut
 #   rhdf5::h5write(data,file=h5filename,name=d_path)
 # }
 
-read_2d_mat_h5 <- function(h5filename,groupname="/",dataname,bounds=NULL){
-  stopifnot(length(unique(groupname))==1,
-            length(unique(dataname))==1,
-            length(unique(h5filename))==1)
 
-  fh <- rhdf5::H5Fopen(h5filename,flags = "H5F_ACC_RDWR")
-  if(substr(groupname,1,1)!="/"){
-    groupname <- paste0("/",groupname)
-  }
-  groupname <- ifelse(groupname=="/","",groupname)
-  d_path <- paste0(groupname,"/",dataname)
-  dsp <-rhdf5::H5Oopen(fh,d_path)
-  attr <- rhdf5::H5Aopen(dsp,"doTranspose")
-  doTranspose <- rhdf5::H5Aread(attr)==0
-  rhdf5::H5Aclose(attr)
-  rhdf5::H5Oclose(dsp)
-  rhdf5::H5Fclose(fh)
-  if(doTranspose){
-    return(t(rhdf5::h5read(h5filename,d_path)))
-  }else{
-    return(rhdf5::h5read(h5filename,d_path))
-  }
-}
 
 
 group_exists <- function(h5file,groupname){
@@ -479,22 +452,78 @@ gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
   }else{
     gds <- gdsfile
   }
-  snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
-    dplyr::mutate(chr=as.integer(chr)) %>%
-    dplyr::arrange(chr,pos) %>% dplyr::mutate(nsnp_id=1:n())
-  stopifnot(dplyr::group_by(snp_info,chr) %>%
+    snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
+        dplyr::mutate(chr=as.integer(chr)) %>% mutate(snp_id=as.integer(ifelse(!is.integer(snp_id),1:n(),snp_id))) %>%
+        dplyr::arrange(chr,pos) %>% dplyr::mutate(nsnp_id=1:n())
+    stopifnot(dplyr::group_by(snp_info,chr) %>%
               dplyr::summarise(is_sorted=!is.unsorted(snp_id)) %>%
               dplyr::summarise(is_sorted=all(is_sorted)) %>%
               dplyr::pull(1))
-  dosage2hdf5(gds=gds,hdf5file=hdf5file,snp_info=snp_info)
+    dosage2hdf5(gds=gds,hdf5file=hdf5file,snp_info=snp_info)
     snp_info <- dplyr::mutate(snp_info,snp_id=nsnp_id) %>% dplyr::select(-nsnp_id)
     sample_info <- tibble::data_frame(sample_id=seqGetData(gds,"sample.id"))
-    write_df_h5(sample_info,"SampleInfo",hdf5file)
-  EigenH5::write_df_h5(df = snp_info,
-                       groupname = "SNPinfo",
-                       outfile=hdf5file)
+    EigenH5::write_df_h5(sample_info,"SampleInfo",hdf5file)
+    EigenH5::write_df_h5(df = snp_info,groupname = "SNPinfo",hdf5file)
 }
 
+
+read_quh_df <- function(h5file,subvecs=NULL,pvv=1){
+
+  tparam_df <- EigenH5::read_df_h5(h5file,"SimulationInfo") %>% group_by(tpve) %>% mutate(pve_replicate=1:n()) %>% ungroup()
+  if(is.null(subvecs)){
+    subvecs <- 1:nrow(tparam_df)
+  }
+  exec_fn <-  function(quhl,tpdfl,D,region_id){
+    data_frame(fgeneid=tpdfl$fgeneid,
+               region_id=region_id,
+               quh=quhl,
+               D=D,
+               p_n=tpdfl$p/tpdfl$n,
+               tbias=tpdfl$tbias,
+               pve_replicate=tpdfl$pve_replicate,
+               tpve=tpdfl$tpve,
+               tsigu=tpdfl$tsigu)%>%dplyr::mutate(eigen_id=1:n())%>%
+      RSSp::filter_pvv(pvv) %>%return()
+  }
+  purrr::map2_df(
+    purrr::array_branch(EigenH5::read_matrix_h5(h5file,"/","quh",subset_cols = subvecs),margin=2),
+    purrr::transpose(dplyr::slice(tparam_df,subvecs)),
+    exec_fn,
+    D=read_vector_h5(h5file,"/","D"),
+    region_id=read_vector_h5(h5file,"SNPinfo","region_id")) %>% return()
+
+}
+
+
+
+read_uh_df <- function(h5file,subvecs=NULL,evdf=NULL){
+
+  tparam_df <- EigenH5::read_df_h5(h5file,"SimulationInfo") %>% group_by(tpve) %>% mutate(pve_replicate=1:n()) %>% ungroup()
+  if(is.null(subvecs)){
+    subvecs <- 1:nrow(tparam_df)
+  }
+  exec_fn <-  function(uhl,tpdfl,L2=NULL,region_id){
+    data_frame(fgeneid=tpdfl$fgeneid,
+               uh=uhl,
+               L2=L2,
+               p_n=tpdfl$p/tpdfl$n,
+               pve_replicate=tpdfl$pve_replicate,
+               tbias=tpdfl$tbias,
+               tpve=tpdfl$tpve,
+               tsigu=tpdfl$tsigu) %>% dplyr::mutate(snp_id=1:n())%>% return()
+  }
+    L2 <- NULL
+    if(!is.null(evdf)){
+        L2 <- purrr::as_vector(
+                         purrr::map(EigenH5::ls_h5(evdf,"L2",full_names=T),~EigenH5::read_vector_h5(evdf,.x,"L2"))
+                     )
+        }
+  purrr::map2_df(
+    purrr::array_branch(EigenH5::read_matrix_h5(h5file,"/","uh",subset_cols = subvecs),margin=2),
+    purrr::transpose(dplyr::slice(tparam_df,subvecs)),
+    exec_fn,
+    L2=L2) %>% return()
+}
 
 dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
   #library(rhdf5)
@@ -519,7 +548,6 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
                             dataname = "dosage",
                             dims = dims,
                             data=numeric(),
-                            doTranspose = F,
                             chunksizes = as.integer(c(chunksize,N)))
   write_chunk <-function(index,x,h5loc,is_haplo,N){
     if(is_haplo){

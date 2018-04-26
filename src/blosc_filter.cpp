@@ -9,7 +9,6 @@
     by Andrew Collette.
 
 */
-// [[Rcpp::interfaces(cpp)]]
 
 #include "blosc_filter.h"
 #include "blosc.h"

@@ -1,10 +1,9 @@
-CXX_STD = CXX14
+CXX_STD = CXX17
 RHDF5_LIBS=`echo 'Rhdf5lib::pkgconfig("PKG_C_LIBS")'|\
     "${R_HOME}/bin/R" --vanilla --slave`
 BLOSC_CFLAGS+=$(shell echo 'libblosc::pkgconfig("PKG_CFLAGS")'|\
 "${R_HOME}/bin/R" --vanilla --slave)
 PKG_LIBS+=$(shell echo 'libblosc::pkgconfig("PKG_LIBS_static")' |\
 "${R_HOME}/bin/R" --vanilla --slave)
-PKG_LIBS += $(RHDF5_LIBS)
-PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
-PKG_CPPFLAGS += -I../inst/include -DUSE_BLOSC -DH5_USE_EIGEN ${BLOSC_CFLAGS} -DUSE_MKL -fopenmp
+PKG_LIBS += $(RHDF5_LIBS) -lstdc++fs -L/home/nwknoblauch/R/x86_64-pc-linux-gnu-library/3.5/EigenH5/libs/EigenH5.so
+PKG_CPPFLAGS += -I../inst/include -DUSE_BLOSC -DH5_USE_EIGEN ${BLOSC_CFLAGS} -Wno-ignored-attributes -DUSE_MKL

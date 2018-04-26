@@ -5,39 +5,104 @@ test_that("mapping works like SeqSupport",{
   n <- 100
   p <- 5
   g <- 3
-
-  test_x <- matrix(as.numeric(rbinom(n = n*p,size = 2,prob = 0.1)),n,p)
-  test_y <- matrix(as.numeric(rnorm(n = n*g)),n,g)
+  test_x <- matrix(as.numeric(rbinom(n = n*p,size = 2,prob = 0.1)),p,n)
+  test_y <- matrix(as.numeric(rnorm(n = n*g)),g,n)
 
   tempf_X <- tempfile()
   tempf_Y <- tempfile()
   tempf_Z <- tempfile()
-  EigenH5::write_matrix_h5(filename = tempf_X,"/","dosage",data = t(test_x))
-  # reg_v <- as.integer(rep(1,p))
-  # EigenH5::write_vector_h5(tempf_X,"SNPinfo","region_id",reg_v)
+  EigenH5::write_matrix_h5(filename = tempf_X,"/","dosage",data = test_x)
   EigenH5::write_matrix_h5(filename = tempf_Y,"trait","ymat",data = test_y)
-  y_df <- chunk_df_h5(filename=tempf_Y,groupname="trait",dataname="ymat")
 
-  X_df <- chunk_df_h5(filename=tempf_X,groupname="/",dataname="dosage",chunksize_row = 3)
-  out_dff <-gen_outer_df(y_df,X_df)
+  snp_start <- as.integer(seq(0,p-1,by=3))
+  snp_stop <- as.integer(pmin(snp_start+3,p))
+  snp_size <- as.integer(snp_stop-snp_start)
+
+  snp_dff <- data_frame(filenames=tempf_X,
+                        groupnames="/",
+                        datanames="dosage",
+                       row_offsets=snp_start,
+                       row_chunksizes=snp_size,
+                       col_offsets=0L,
+                       col_chunksizes=as.integer(n))
 
 
-  map_eQTL_chunk_h5(tempf_X,tempf_Y,tempf_Z)
-  cc_uh <- EigenH5::read_matrix_h5(tempf_Z,"1","uh")
-  cc_se <- EigenH5::read_matrix_h5(tempf_Z,"1","se")
+  gb <- 2
+  exp_start <- as.integer(seq(0,g-1,by=gb))
+  exp_stop <- as.integer(pmin(exp_start+gb,g))
+  exp_size <- as.integer(exp_stop-exp_start)
+
+  exp_dff <- data_frame(filenames=tempf_Y,
+                        groupnames="trait",
+                        datanames="ymat",
+                       row_offsets=exp_start,
+                       row_chunksizes=exp_size,
+                       col_offsets=0L,
+                       col_chunksizes=as.integer(n))
+
+  uh_dff <- cross_df_h5(snp_dff,exp_dff,
+                     output_filenames=tempf_Z,
+                     output_groupnames="/",
+                     output_datanames="uh")
+  se_dff <- mutate(uh_dff,datanames="se")
+
+  jj <- 1
+  cn <- nrow(snp_dff)*nrow(exp_dff)
+
+
+  jjm <- matrix(1:cn,nrow(snp_dff),nrow(exp_dff))
+  tjj <- 1
+  for(i in 1:nrow(exp_dff)){
+      for(j in 1:nrow(snp_dff)){
+        jj <- jjm[j,i]
+        expect_equal(tjj,jj)
+        expect_equal(uh_dff$row_offsets[jj],snp_dff$row_offsets[j])
+        expect_equal(uh_dff$row_chunksizes[jj],snp_dff$row_chunksizes[j])
+        expect_equal(uh_dff$col_offsets[jj],exp_dff$row_offsets[i])
+        expect_equal(uh_dff$col_chunksizes[jj],exp_dff$row_chunksizes[i])
+
+        expect_equal(se_dff$row_offsets[jj],snp_dff$row_offsets[j])
+        expect_equal(se_dff$row_chunksizes[jj],snp_dff$row_chunksizes[j])
+        expect_equal(se_dff$col_offsets[jj],exp_dff$row_offsets[i])
+        expect_equal(se_dff$col_chunksizes[jj],exp_dff$row_chunksizes[i])
+        tjj <- tjj+1
+      }
+  }
+  EigenH5::create_matrix_h5(tempf_Z,"/","uh", numeric(),dims=as.integer(c(p,g)))
+  EigenH5::create_matrix_h5(tempf_Z,"/","se", numeric(),dims=as.integer(c(p,g)))
+
+
+
+
+  map_eQTL_chunk_h5(snp_dff,exp_dff,uh_dff,se_dff)
+  cc_uh <- EigenH5::read_matrix_h5(tempf_Z,"/","uh")
+  cc_se <- EigenH5::read_matrix_h5(tempf_Z,"/","se")
   cc_bh <- cc_uh*cc_se
-  st_x <- apply(test_x,2,function(x){x-mean(x)})
-  st_y <- apply(test_y,2,function(x){x-mean(x)})
+  st_x <- apply(t(test_x),2,function(x){x-mean(x)})
+  st_y <- apply(t(test_y),2,function(x){x-mean(x)})
   bh <- matrix(0,p,g)
   se <- matrix(0,p,g)
+  rbh <- function(x,y){
+    sx <-sum(x^2)
+  return((t(x)%*%y)/sx)
+  }
 
-  for(i in 1:p){
-    for(j in 1:g){
-      tl <- coef(summary(lm(st_y[,j]~st_x[,i]+0)))
+cpx <- crossprod(st_x,st_y)
+ssx <-colSums(st_x^2)
+ssy <- colSums(st_y^2)
+# rbh <-apply(cpx,2,function(x){x/ssx})
+# -2*rbh*cpx+cpx^2/outer(ssx,ssy)
+# trbh <-apply(rbh,2,function(x){x^2*(ssx))})
+# rse <-sqrt(t(apply(trbh,1,function(x){vy-x})))
+for(i in 1:p){
+  for(j in 1:g){
+    tl <- coef(summary(lm(st_y[,j]~st_x[,i]+0)))
       bh[i,j] <- tl[1]
       se[i,j] <- tl[2]
     }
-  }
+}
+expect_equal(rbh,bh)
+
   uh <- bh/se
   max(abs(cc_se-se))
   max(abs(cc_uh-uh))
@@ -48,34 +113,9 @@ test_that("mapping works like SeqSupport",{
 })
 
 
-test_that("chunk crossprod works",{
 
-
-  p <- 50
-  g <- 3
-  chunks <- 50
-  bfmat <- matrix(0,chunks*p,g)
-  il <- split(1:(chunks*p),cut(1:chunks*p,breaks = chunks,labels = F))
-  tfa <- tempfile()
-  tfb <- tempfile()
-Ql <- list()
-uhl <- list()
-quhl <- list()
-  for(i in 1:chunks){
-    Ql[[i]] <-matrix(runif(p*p),p,p)
-    uhl[[i]] <- matrix(runif(p*g),p,g)
-    quhl[[i]] <- crossprod(Ql[[i]],uhl[[i]])
-    EigenH5::write_matrix_h5(filename = tfa,groupname = paste0("EVD/",as.character(i)),dataname = "Q",data = Ql[[i]])
-    EigenH5::write_matrix_h5(filename = tfb,groupname = as.character(i),dataname = "uh",data = uhl[[i]])
-  }
-bfmat <- data.matrix(map_df(quhl,as_data_frame))
-attr(bfmat,"dimnames") <- NULL
-  tfo <- tempfile()
-  crossprod_chunk_h5(infile_1 = tfa,
-                     infile_2 = tfb,in_groups = as.character(1:50),
-                     outfile = tfo,indata_1 = "Q",indata_2 = "uh",outgroup = "/",outdata = "quh")
-  rquh <- EigenH5::read_matrix_h5(tfo,"/","quh")
-  expect_equal(bfmat,rquh)
+test_that("crossprod works",{
 
 
 })
+
