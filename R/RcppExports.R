@@ -25,10 +25,6 @@ sim_U <- function(n, tsigu, chunksize = 2L) {
     .Call(`_SeqSupport_sim_U_exp`, n, tsigu, chunksize)
 }
 
-sim_U2 <- function(n, tsigu) {
-    .Call(`_SeqSupport_sim_U2_exp`, n, tsigu)
-}
-
 calc_af_h5 <- function(file_l) {
     .Call(`_SeqSupport_calc_af_h5`, file_l)
 }

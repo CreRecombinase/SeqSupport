@@ -17,7 +17,7 @@ test_that("pve and sigu are calculated consistently",{
 test_that("normal simulations are kind of normal",{
 p <- 100000
 tsigu <-c(1,1.2,1.5,2,3)
-U <- SeqSupport::sim_U(n = p,tsigu)$U
+U <- SeqSupport::sim_U(n = p,tsigu)
 expect_equal(dim(U),c(p,length(tsigu)))
 expect_true((!is.na(mean(U))))
 expect_gt(var(U[,2]),var(U[,1]))
@@ -25,22 +25,6 @@ expect_equal(apply(U,2,sd),tsigu,tolerance = 0.1)
 expect_equal(colMeans(U,2),rep(0,length(tsigu)),tolerance=0.1)
 })
 
-test_that("normal simulations (using tbb) are kind of normal",{
-  p <- 10000
-  tsigu <-c(1,1.2,1.5,2,3)
-
-
-  U <-  SeqSupport::sim_U2(n = p,tsigu)
-
-  #                U= SeqSupport::sim_U(n = p,tsigu))
-
-
-  expect_equal(dim(U),c(p,length(tsigu)))
-  expect_true((!is.na(mean(U))))
-  expect_gt(var(U[,2]),var(U[,1]))
-  expect_equal(apply(U,2,sd),tsigu,tolerance = 0.1)
-  expect_equal(colMeans(U,2),rep(0,length(tsigu)),tolerance=0.1)
-})
 
 test_that("pve and sigu are calculated consistently in gen_tparam_df",{
 

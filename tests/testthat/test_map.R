@@ -39,22 +39,6 @@ test_that("mapping eQTL works like lm",{
     }
     return(list(uh=bh/se,se=se))
   }
-  alt_wrapper <- function(xmat,ymat){
-    st_x <-scale(t(xmat),center=T,scale=F)
-    st_y <- scale(t(ymat),center=T,scale=F)
-    xsd <-apply(st_x^2,2,sum)
-    xsum <- apply(st_x^2,2,sum)
-    ttbh <-crossprod(st_x,st_y)/xsd
-    ysum <-sqrt(colSums(st_y^2)/(n-1))
-    # ttse <-outer(ysum,1/sqrt(xsd))
-    # ttse <- 1/sqrt(xsd) %o% ysum
-
-    # ttse <-sapply(ysum,function(x){
-    #   x/sqrt(xsd)
-    # })
-    return(list(uh=ttbh/ttse,se=ttse))
-  }
-
 
   n <- 10000
   p <- 5
@@ -63,20 +47,9 @@ test_that("mapping eQTL works like lm",{
   test_y <- matrix(as.numeric(rnorm(n = n*g)),g,n)
   bh_se_h5 <-eqtl_wrapper(test_x,test_y)
   bh_se_lm <- lm_wrapper(test_x,test_y)
-  bh_se_a <- alt_wrapper(test_x,test_y)
-  expect_equal(bh_se_h5,bh_se_lm)
-  expect_equal(bh_se_a,bh_se_lm,tolerance=1e-4)
+  expect_equal(bh_se_h5,bh_se_lm,tolerance=1e-4)
 
 
-
-
-  ## Check Xiang's version of summary stats
-
-
-
-
-  expect_equal(ttse,se,tolerance=1e-5)
-  expect_equal(ttbh,bh)
 })
 
 

@@ -21,6 +21,11 @@ Eigen::MatrixXd center_columns_exp( Eigen::MatrixXd mat){
 }
 
 
+
+
+
+
+
 template<typename DerivedA, typename DerivedB>
 void calc_sx2(const Eigen::MatrixBase<DerivedA> &centered_snpmat,
 	      Eigen::ArrayBase<DerivedB> &sx2){
@@ -38,6 +43,7 @@ void calc_sy(const Eigen::MatrixBase<DerivedA> &centered_expmat,
   const size_t g=centered_expmat.cols();
   const size_t n=centered_expmat.rows();
   sy=(centered_expmat.array().square().colwise().sum()/(n-1)).sqrt();
+  Rcpp::Rcout<<sy<<std::endl;
   if(g!=sy.size()){
     Rcpp::Rcerr<<"EXP matrix has "<<g<<" cols, while sy has "<<sy.size()<<" elements!";
     Rcpp::stop("EXP matrix must have the same number of columns as sy has elements");
@@ -79,255 +85,65 @@ void calc_uh(Eigen::MatrixBase<DerivedA> &UH_mat,
 }
 
 
-template<typename T,int Oa>
-void calc_se(const Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> &centered_snpmat,
-	     const Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> &centered_expmat,
-	     const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sx2,
-	     const Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> &BH_mat,
-	     Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> &se_mat){
-
-  const size_t N=centered_snpmat.rows();
-  const size_t p=centered_snpmat.cols();
-  const size_t g=centered_expmat.cols();
-
-  se_mat.resize(p,g);
-  if(se_mat.rows()!=p){
-    Rcpp::stop("se_mat resize of rows failed");
-  }
-  if(se_mat.cols()!=g){
-    Rcpp::stop("se_mat resize of cols failed");
-  }
-  if(BH_mat.rows()!=se_mat.rows() || BH_mat.cols()!=se_mat.cols()){
-    Rcpp::Rcerr<<"Expecting matrix of dimension: "<<p<<"x"<<g<<std::endl;
-    Rcpp::Rcerr<<"BH_mat is :"<<BH_mat.rows()<<" x "<<BH_mat.cols()<<std::endl;
-    Rcpp::Rcerr<<"se_mat is :"<<se_mat.rows()<<" x "<<se_mat.cols()<<std::endl;
-    Rcpp::stop("BH_mat/se_mat is the wrong dimensions!");
-  }
-  for(int l=0; l<p;l++){
-    for(int k=0; k<g;k++){
-      se_mat(l,k)=std::sqrt((1/(static_cast<T>(N-1)*sx2(l)))*(centered_expmat.col(k)-(centered_snpmat.col(l)*BH_mat(l,k))).array().square().sum());
-    }
-  }
-}
-
 
 
 template<typename T,int Oa>
-void calc_se_alt(const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sx2,
+void calc_se(const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sx2,
 		 const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sy,
 	     Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> &se_mat){
 
-  const size_t N=centered_snpmat.rows();
-  const size_t p=centered_snpmat.cols();
-  const size_t g=centered_expmat.cols();
+  //  const size_t N=centered_snpmat.rows();
+  const size_t p=sx2.size();
+  const size_t g=sy.size();
 
-  se_mat.resize(p,g);
+  //  se_mat.resize(p,g);
+
+  se_mat=(1/sx2.sqrt()).rowwise().replicate(g).rowwise()*sy.transpose();
   if(se_mat.rows()!=p){
     Rcpp::stop("se_mat resize of rows failed");
   }
   if(se_mat.cols()!=g){
     Rcpp::stop("se_mat resize of cols failed");
   }
-  if(BH_mat.rows()!=se_mat.rows() || BH_mat.cols()!=se_mat.cols()){
-    Rcpp::Rcerr<<"Expecting matrix of dimension: "<<p<<"x"<<g<<std::endl;
-    Rcpp::Rcerr<<"BH_mat is :"<<BH_mat.rows()<<" x "<<BH_mat.cols()<<std::endl;
-    Rcpp::Rcerr<<"se_mat is :"<<se_mat.rows()<<" x "<<se_mat.cols()<<std::endl;
-    Rcpp::stop("BH_mat/se_mat is the wrong dimensions!");
-  }
-  for(int l=0; l<p;l++){
-    for(int k=0; k<g;k++){
-      se_mat(l,k)=std::sqrt((1/(static_cast<T>(N-1)*sx2(l)))*(centered_expmat.col(k)-(centered_snpmat.col(l)*BH_mat(l,k))).array().square().sum());
-    }
-  }
+
+
 }
 
 
-// #if RCPP_PARALLEL_USE_TBB
+// template<typename T,int Options>
+// class trait_mapper{
+//   using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
+//   using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
+//   Mat snp_mat;
+//   Mat exp_mat;
+//   Array sx2;
+//   Array sy;
 
-
-using namespace RcppParallel;
-template<typename T,int Oa>
-struct ccalcSE
-{
-   // source matrix
-  typedef Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> Mat;
-  typedef Eigen::Array<T,Eigen::Dynamic,1,Oa> Array;
-  typedef Eigen::Map<const Mat > MCMat;
-  typedef Eigen::Map<Mat > MMat;
-  typedef Eigen::Map<const Array > MCArr;
-
-
-  const  MCMat centered_snpmat;
-  const MCMat  centered_expmat;
-  const MCArr sx2;
-  const MCMat BH_mat;
-  mutable MMat se_mat;
-  const size_t N;
-  const size_t p;
-  const size_t g;
-
-   // initialize with source and destination
-  ccalcSE(const Mat &snpmat, const Mat &expmat, const Array &sx, const Mat &BH, Mat &se)
-    :	centered_snpmat(snpmat.data(),snpmat.rows(),snpmat.cols()),
-	centered_expmat(expmat.data(),expmat.rows(),expmat.cols()),
-	sx2(sx.data(),sx.size()),
-	BH_mat(BH.data(),BH.rows(),BH.cols()),
-	se_mat(se.data(),se.rows(),se.cols()),
-	N(centered_snpmat.rows()),
-	p(centered_snpmat.cols()),
-	g(centered_expmat.cols()){}
-
-
-
-  void operator()( const tbb::blocked_range2d<size_t>& r ) const {
-        for( size_t l=r.rows().begin(); l!=r.rows().end(); ++l ){
-            for( size_t k=r.cols().begin(); k!=r.cols().end(); ++k ) {
-	      se_mat(l,k)=std::sqrt((1/(static_cast<T>(N-1)*sx2(l)))*(centered_expmat.col(k)-(centered_snpmat.col(l)*BH_mat(l,k))).array().square().sum());
-	    }
-	}
-  }
-};
-
-//
-//
-template<typename T,int Options>
-std::pair< Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>,
-           Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> >
-calc_bh_se_p(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
-	   Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &expmat,
-	     Eigen::Array<T,Eigen::Dynamic,1,Options> &sx2){
-
-  using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
-  using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
-
-  center_columns(snpmat);
-  center_columns(expmat);
-  //  Array sx2;
-  if(sx2.size()!=snpmat.cols()){
-    calc_sx2(snpmat,sx2);
-  }
-  std::pair<Mat,Mat> retmats;
-  calc_BH(snpmat,expmat,sx2,retmats.first);
-  const size_t p=retmats.first.rows();
-  const size_t g=retmats.first.cols();
-  retmats.second.resize(p,g);
-
-
-  tbb::parallel_for( tbb::blocked_range2d<size_t>(0, p, 16, 0, g, 32),
-		     ccalcSE<T,Options>(snpmat,expmat,sx2,retmats.first,retmats.second));
-
-  calc_uh(retmats.first,retmats.second);
-  return(retmats);
-}
-
-
-
-
-
-
-
-
-
-
-
-// #else
-
-//
-// using namespace RcppParallel;
-// template<typename T,int Oa>
-// struct ccalcSE : public RcppParallel::Worker
-// {
-//    // source matrix
-//   typedef Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Oa> Mat;
-//   typedef Eigen::Array<T,Eigen::Dynamic,1,Oa> Array;
-//   typedef Eigen::Map<const Mat > MCMat;
-//   typedef Eigen::Map<Mat > MMat;
-//   typedef Eigen::Map<const Array > MCArr;
-//
-//
-//   const  MCMat centered_snpmat;
-//   const MCMat  centered_expmat;
-//   const MCArr sx2;
-//   const MCMat BH_mat;
-//   MMat se_mat;
-//   const size_t N;
-//   const size_t p;
-//   const size_t g;
-//
-//    // initialize with source and destination
-//   ccalcSE(const Mat &snpmat, const Mat &expmat, const Array &sx, const Mat &BH, Mat &se)
-//     :	centered_snpmat(snpmat.data(),snpmat.rows(),snpmat.cols()),
-// 	centered_expmat(expmat.data(),expmat.rows(),expmat.cols()),
-// 	sx2(sx.data(),sx.size()),
-// 	BH_mat(BH.data(),BH.rows(),BH.cols()),
-// 	se_mat(se.data(),se.rows(),se.cols()),
-// 	N(centered_snpmat.rows()),
-// 	p(centered_snpmat.cols()),
-// 	g(centered_expmat.cols()){}
-//
-//
-//    void operator()(std::size_t begin, std::size_t end) {
-//      for(int l=0; l<p;l++){
-//        for(int k=0; k<g;k++){
-// 	 se_mat(l,k)=std::sqrt((1/(static_cast<T>(N-1)*sx2(l)))*(centered_expmat.col(k)-(centered_snpmat.col(l)*BH_mat(l,k))).array().square().sum());
-//        }
-//      }
-//    }
 // };
-
-
-
-// #endif
-
-
-
-
-
-template<typename T,int Options>
-std::pair< Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>,Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options > >
-calc_bh_se_alt(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
-           Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &expmat,
-           Eigen::Array<T,Eigen::Dynamic,1,Options> &sx2){
-
-  using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
-  using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
-
-  center_columns(snpmat);
-  center_columns(expmat);
-  //Array sx2;
-  if(sx2.size()!=snpmat.cols()){
-    calc_sx2(snpmat,sx2);
-  }
-  std::pair<Mat,Mat> retmats;
-  calc_BH(snpmat,expmat,sx2,retmats.first);
-  calc_se(snpmat,expmat,sx2,retmats.first,retmats.second);
-  calc_uh(retmats.first,retmats.second);
-  return(retmats);
-}
 
 
 
 template<typename T,int Options>
 std::pair< Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>,Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options > >
 calc_bh_se(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
-	   Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &expmat,
-	   Eigen::Array<T,Eigen::Dynamic,1,Options> &sx2){
+           Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &expmat){
 
-  using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
-  using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
+
 
   center_columns(snpmat);
   center_columns(expmat);
-  //Array sx2;
-  if(sx2.size()!=snpmat.cols()){
-    calc_sx2(snpmat,sx2);
-  }
+  Array sx2;
+  Array sy;
+  calc_sx2(snpmat,sx2);
+  calc_sy(expmat,sy);
   std::pair<Mat,Mat> retmats;
   calc_BH(snpmat,expmat,sx2,retmats.first);
-  calc_se(snpmat,expmat,sx2,retmats.first,retmats.second);
+  calc_se(sx2,sy,retmats.second);
   calc_uh(retmats.first,retmats.second);
   return(retmats);
 }
+
+
 
 //[[Rcpp::export]]
 Rcpp::ListOf<Rcpp::NumericMatrix> calc_uh_se_exp(const Eigen::MatrixXd input_snpmat, const Eigen::MatrixXd input_expmat,bool parallel=false){
@@ -335,15 +151,12 @@ Rcpp::ListOf<Rcpp::NumericMatrix> calc_uh_se_exp(const Eigen::MatrixXd input_snp
   Eigen::MatrixXd exp_cp =input_expmat;
   Eigen::ArrayXd ta;
   using namespace Rcpp;
-  if(parallel){
-    auto ret = calc_bh_se_p(snp_cp,exp_cp,ta);
-    return(Rcpp::List::create(_["UH"]=Rcpp::wrap(ret.first),_["se"]=Rcpp::wrap(ret.second)));
-  }else{
-    auto ret = calc_bh_se(snp_cp,exp_cp,ta);
-    return(Rcpp::List::create(_["UH"]=Rcpp::wrap(ret.first),_["se"]=Rcpp::wrap(ret.second)));
-  }
+  auto ret = calc_bh_se(snp_cp,exp_cp);
+  return(Rcpp::List::create(_["UH"]=Rcpp::wrap(ret.first),_["se"]=Rcpp::wrap(ret.second)));
 
 }
+
+
 
 
 
@@ -357,10 +170,6 @@ Eigen::MatrixXd evd_rnorm_i(const Eigen::Map<Eigen::MatrixXd> Q, const Eigen::Ma
   if(vm.rows()!=p){
     Rcpp::stop("rows of vm must match length of s");
   }
-  //Rcpp::NumericMatrix retmat(p,n);
-  //Eigen::Map<Eigen::MatrixXd> mQ(&Q(0,0),p,p);
-  //Eigen::Map<Eigen::VectorXd> ms(&s(0),p);
-  //Eigen::Map<Eigen::MatrixXd> mX(&vm(0,0),p,n);
   return(Q*s.matrix().asDiagonal()*vm);
 }
 
@@ -388,29 +197,6 @@ void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true){
   if( in_q_size!=in_u_size || in_q_size != in_uh_size){
     Rcpp::stop("size of all elements of file_l must be equal!");
   }
-  //  DataQueue<2,double> Beta_f(file_l["Beta"],false,wf);
-
-
-
-
-  // const size_t in1_size = q_dff.rows();
-  // const size_t in2_size = uh_dff.rows();
-  // const size_t out_size = quh_dff.rows();
-
-  // std::unordered_map<std::string,std::shared_ptr<HighFive::File> >  m_file_map;
-  // std::unordered_map<std::string,std::shared_ptr<HighFive::Group> >  m_group_map;
-  // std::unordered_map<std::string,std::shared_ptr<HighFive::DataSet> > m_dataset_map;
-
-  // if(in1_size!=in2_size){
-  //   Rcpp::stop("input_1 dataframe and input_2 dataframe must have the same number of rows!");
-  // }
-  // if(in2_size!=out_size){
-  //   Rcpp::stop("input_1 dataframe and input_2 dataframe must have the same number of rows as output dataframe!");
-  // }
-
-  // MatSlices Q_f(q_dff,m_file_map,m_group_map,m_dataset_map,true);
-  // MatSlices uh_f(uh_dff,m_file_map,m_group_map,m_dataset_map,true);
-  // MatSlices Quh_f(quh_dff,m_file_map,m_group_map,m_dataset_map,false);
 
   using Mat= Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::ColMajor>;
   Mat Q;
@@ -435,109 +221,19 @@ void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true){
   }
 }
 
-
-
-//
-// using namespace RcppParallel;
-//
-struct rnorm_mat : public Worker
-{
-
-   // destination matrix
-  const Eigen::Map<const Eigen::VectorXd> sigu;
-  const	size_t p;
-  const size_t g;
-  Eigen::Map<Eigen::MatrixXd> output;
-
-
-
-  rnorm_mat(const Eigen::VectorXd sigma_u,Eigen::MatrixXd &output_)
-    : sigu(sigma_u.data(),sigma_u.size()), g(sigma_u.size()),
-      p(output_.rows()),
-      output(output_.data(),output_.rows(),output_.cols()){}
-
-   // take the square root of the range of elements requested
-  void operator()(std::size_t begin, std::size_t end) {
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<> d{0,1};
-
-    for(size_t i=begin; i<end; i++){
-      const double sigu_temp = sigu[i/p];
-      const double tret = d(gen)*sigu_temp;
-      output(i)=tret;
-
-    }
-  }
-};
-//
-
-
-
-
-
-
-
 void sim_U(const int p, Eigen::VectorXd tsigu, Eigen::MatrixXd &eX){
 
 
-
   const int g=tsigu.size();
-  if(g!=eX.cols() || p!=eX.rows()){
-    eX.resize(p,g);
-  }
 
-  rnorm_mat rnm(tsigu, eX);
-
-  // call parallelFor to do the work
-   // rnm(0,p*g);
-   RcppParallel::parallelFor(0, p*g,rnm);
-
-
-
-
-  // std::random_device rd{};
-  // std::mt19937 gen{rd()};
-
-  // for(int i=0; i<g;i++){
-  //   for(int j=0;j<p;j++){
-  //     eX(j, i) = R::rnorm(0,tsigu(i));
-  //   }
-  // }
-}
-
-
-void sim_U2(const int p, Eigen::VectorXd tsigu, Eigen::MatrixXd &eX){
-
-  const int rowblocks=3;
-  const int colblocks=11;
-
-  const int g=tsigu.size();
-  if(g!=eX.cols() || p!=eX.rows()){
-    eX.resize(p,g);
-  }
-
-  rnorm_mat rnm(tsigu, eX);
-
-  // call parallelFor to do the work
-  // rnm(0,p*g);
   std::random_device rd{};
   std::mt19937 gen{rd()};
   std::normal_distribution<> d{0,1};
-  // std::atomic<int> it=0;
-  tbb::parallel_for( tbb::blocked_range2d<size_t>(0, g, 2, 0, p, 100),[&](const tbb::blocked_range2d<size_t>& r) {
-    // it++;
-    for( size_t l=r.rows().begin(); l!=r.rows().end(); ++l ){
-      const double sigu_temp = tsigu[l];
-      for( size_t k=r.cols().begin(); k!=r.cols().end(); ++k ) {
-        eX(k,l)=d(gen)*sigu_temp;
-      }
-    }
-  }
-  );
-  // Rcpp::Rcout<<"called lambda "<<it<<" times"<<std::endl;
-
+  auto norm = [&] (double) {return d(gen);};
+  eX = Eigen::MatrixXd::NullaryExpr(p,g,norm).array().rowwise()*tsigu.array().transpose();
 }
+
+
 
 
 //[[Rcpp::export(name="sim_U")]]
@@ -545,37 +241,13 @@ Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunk
   const int g=tsigu.size();
   Eigen::MatrixXd X;
   auto t0 = tbb::tick_count::now();
-  const int p=n;
-  if(g!=X.cols() || p!=X.rows()){
-    X.resize(p,g);
-  }
-
-  rnorm_mat rnm(tsigu, X);
-
-  // call parallelFor to do the work
-  // rnm(0,p*g);
-  RcppParallel::parallelFor(0, p*g,rnm,chunksize);
-
-  auto t1 = tbb::tick_count::now();
-  using namespace Rcpp;
-  double ret= (t1-t0).seconds();
-  return(wrap(X));
-}
-
-
-//[[Rcpp::export(name="sim_U2")]]
-Rcpp::NumericMatrix sim_U2_exp(const int n, Eigen::VectorXd tsigu){
-  const int g=tsigu.size();
-  Eigen::MatrixXd X;
-  auto t0 = tbb::tick_count::now();
-  sim_U2(n,tsigu,X);
+  sim_U(n,tsigu,X);
   auto t1 = tbb::tick_count::now();
   using namespace Rcpp;
   double ret= (t1-t0).seconds();
 
   return(wrap(X));
 }
-
 
 
 //[[Rcpp::export]]
@@ -879,7 +551,6 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   Mat EXP_chunk;
   Mat UH_chunk;
   Mat se_chunk;
-  Eigen::ArrayXd sx2_chunk;
   Mat SNP_chunk;
   const int tot_size = SNP_f.getNumSelections()*EXP_f.getNumSelections();
 
@@ -896,14 +567,8 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
         Rcpp::stop("Chunksize mismatch!");
       }
       const int	tp=SNP_chunk.cols();
-      if(use_AF){
-        sx2_chunk.resize(tp);
-        std::copy_n(&Af[af_offset[j] ],tp,sx2_chunk.data());
-        sx2_chunk=2*(sx2_chunk*(1-sx2_chunk));
-        sx2_chunk=(sx2_chunk*(N-1));
-      }
 
-      auto uh_se= calc_bh_se(SNP_chunk,EXP_chunk,sx2_chunk);
+      auto uh_se= calc_bh_se(SNP_chunk,EXP_chunk);
       uh_f.writeMat(rk,uh_se.first);
       se_f.writeMat(rk,uh_se.second);
       rk++;
