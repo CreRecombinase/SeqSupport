@@ -446,14 +446,14 @@ gen_map_eqtl_df <- function(snpfile,expfile,uhfile,snp_chunksize=50000,exp_chunk
 
 gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
   # library(rhdf5)
-
-  if(class(gdsfile)=="character"){
+  is_c <- class(gdsfile)=="character"
+  if(is_c){
     gds <- SeqArray::seqOpen(gdsfile)
   }else{
     gds <- gdsfile
   }
     snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
-        dplyr::mutate(chr=as.integer(chr)) %>% mutate(snp_id=as.integer(ifelse(!is.integer(snp_id),1:n(),snp_id))) %>%
+        dplyr::mutate(chr=as.integer(chr)) %>% dplyr::mutate(snp_id=as.integer(ifelse(!is.integer(snp_id),1:n(),snp_id))) %>%
         dplyr::arrange(chr,pos) %>% dplyr::mutate(nsnp_id=1:n())
     stopifnot(dplyr::group_by(snp_info,chr) %>%
               dplyr::summarise(is_sorted=!is.unsorted(snp_id)) %>%
@@ -464,6 +464,10 @@ gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
     sample_info <- tibble::data_frame(sample_id=seqGetData(gds,"sample.id"))
     EigenH5::write_df_h5(sample_info,"SampleInfo",hdf5file)
     EigenH5::write_df_h5(df = snp_info,groupname = "SNPinfo",hdf5file)
+    #Close it if we opened it
+    if(is_c){
+      seqClose(gds)
+    }
 }
 
 
@@ -560,7 +564,7 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
     oindex <- oindex_r[1]
     stopifnot(all(oindex_r==seq.int(from=oindex,length.out = tp)))
     stopifnot(ncol(tobj)==N)
-    stopifnot(all(tobj>=0))
+    # stopifnot(all(tobj>=0))
     EigenH5::write_matrix_h5(filename = h5loc,
                                   groupname="/",
                                   dataname="dosage",

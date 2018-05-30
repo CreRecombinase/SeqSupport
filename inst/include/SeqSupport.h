@@ -7,7 +7,6 @@
 
 #include <progress.hpp>
 #include <progress_bar.hpp>
-#include "SeqSupport/eqtl.hpp"
 //[[Rcpp::plugins(cpp14)]]
 
 #include <iterator>

@@ -5,23 +5,43 @@ blosc <- function() {
     .Call(`_SeqSupport_blosc`)
 }
 
+center_columns <- function(mat) {
+    .Call(`_SeqSupport_center_columns_exp`, mat)
+}
+
+calc_uh_se_exp <- function(input_snpmat, input_expmat, parallel = FALSE) {
+    .Call(`_SeqSupport_calc_uh_se_exp`, input_snpmat, input_expmat, parallel)
+}
+
 evd_rnorm_i <- function(Q, s, vm) {
     .Call(`_SeqSupport_evd_rnorm_i`, Q, s, vm)
 }
 
-crossprod_quh_h5 <- function(q_dff, uh_dff, quh_dff, doTranspose = TRUE) {
-    invisible(.Call(`_SeqSupport_crossprod_quh_h5`, q_dff, uh_dff, quh_dff, doTranspose))
+crossprod_quh_h5 <- function(file_l, doTranspose = TRUE) {
+    invisible(.Call(`_SeqSupport_crossprod_quh_h5`, file_l, doTranspose))
 }
 
-sim_U <- function(n, tsigu) {
-    .Call(`_SeqSupport_sim_U_exp`, n, tsigu)
+sim_U <- function(n, tsigu, chunksize = 2L) {
+    .Call(`_SeqSupport_sim_U_exp`, n, tsigu, chunksize)
 }
 
-simulate_y_h5 <- function(in_dff, out_dff, p, N, g, tsigu) {
-    .Call(`_SeqSupport_simulate_y_h5`, in_dff, out_dff, p, N, g, tsigu)
+sim_U2 <- function(n, tsigu) {
+    .Call(`_SeqSupport_sim_U2_exp`, n, tsigu)
 }
 
-map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, EXP_first = TRUE, SNP_first = TRUE) {
-    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, EXP_first, SNP_first))
+calc_af_h5 <- function(file_l) {
+    .Call(`_SeqSupport_calc_af_h5`, file_l)
+}
+
+simulate_y_h5 <- function(file_l, p, N, g, tsigu, Af = as.numeric( c())) {
+    .Call(`_SeqSupport_simulate_y_h5`, file_l, p, N, g, tsigu, Af)
+}
+
+est_spve_h5 <- function(file_l, N, sigu, rel_D_cutoff = 0.01) {
+    .Call(`_SeqSupport_est_spve_h5`, file_l, N, sigu, rel_D_cutoff)
+}
+
+map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, Af = as.numeric( c())) {
+    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, Af))
 }
 
