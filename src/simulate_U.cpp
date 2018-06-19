@@ -43,7 +43,7 @@ void calc_sy(const Eigen::MatrixBase<DerivedA> &centered_expmat,
   const size_t g=centered_expmat.cols();
   const size_t n=centered_expmat.rows();
   sy=(centered_expmat.array().square().colwise().sum()/(n-1)).sqrt();
-  Rcpp::Rcout<<sy<<std::endl;
+  //  Rcpp::Rcout<<sy<<std::endl;
   if(g!=sy.size()){
     Rcpp::Rcerr<<"EXP matrix has "<<g<<" cols, while sy has "<<sy.size()<<" elements!";
     Rcpp::stop("EXP matrix must have the same number of columns as sy has elements");

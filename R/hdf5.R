@@ -18,6 +18,16 @@ read_SNPinfo <- function(snpfile,chr_to_char=T, extra_cols = NULL, id_col=NULL){
 }
 
 
+
+
+# mach2h5 <- function(machfile.gz,hdf5file,datapath,subset_rows=NULL,subset_cols=NULL){
+#
+#
+# read_delim_chunked(machfile.gz,)
+#
+# }
+
+
 waitr <- function(listres,timeout=Inf){
   num_p <- length(listres)
   num_f <-sum(purrr::map_lgl(listres,resolved))
