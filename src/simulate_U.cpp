@@ -112,8 +112,7 @@ void calc_se(const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sx2,
 
 // template<typename T,int Options>
 // class trait_mapper{
-//   using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
-//   using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
+
 //   Mat snp_mat;
 //   Mat exp_mat;
 //   Array sx2;
@@ -128,6 +127,8 @@ std::pair< Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>,Eigen::Matrix<
 calc_bh_se(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
            Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &expmat){
 
+  using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
+  using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
 
 
   center_columns(snpmat);
