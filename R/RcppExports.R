@@ -5,6 +5,10 @@ blosc <- function() {
     .Call(`_SeqSupport_blosc`)
 }
 
+ld_p_h5 <- function(input_filename, output_filename, subset_snp, snp_id, subset_ind, map, chunksize = 10000L) {
+    invisible(.Call(`_SeqSupport_ld_p_h5`, input_filename, output_filename, subset_snp, snp_id, subset_ind, map, chunksize))
+}
+
 center_columns <- function(mat) {
     .Call(`_SeqSupport_center_columns_exp`, mat)
 }
@@ -37,7 +41,15 @@ est_spve_h5 <- function(file_l, N, sigu, rel_D_cutoff = 0.01) {
     .Call(`_SeqSupport_est_spve_h5`, file_l, N, sigu, rel_D_cutoff)
 }
 
-map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, Af = as.numeric( c())) {
-    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, Af))
+orthogonalize_data <- function(data, ortho_covar) {
+    .Call(`_SeqSupport_orthogonalize_data`, data, ortho_covar)
+}
+
+orthogonalize_covars <- function(Covariates) {
+    .Call(`_SeqSupport_orthogonalize_covars`, Covariates)
+}
+
+map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, Covariates) {
+    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, Covariates))
 }
 

@@ -4,6 +4,8 @@
 #include "EigenH5.h"
 #include <RcppEigen.h>
 
+#include "zstd/zstd.h"
+#include "zstd/zstd_h5plugin.h"
 
 #include <progress.hpp>
 #include <progress_bar.hpp>

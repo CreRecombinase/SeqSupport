@@ -110,18 +110,6 @@ void calc_se(const Eigen::Array<T,Eigen::Dynamic,1,Oa> &sx2,
 }
 
 
-// template<typename T,int Options>
-// class trait_mapper{
-
-//   Mat snp_mat;
-//   Mat exp_mat;
-//   Array sx2;
-//   Array sy;
-
-// };
-
-
-
 template<typename T,int Options>
 std::pair< Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>,Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options > >
 calc_bh_se(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
@@ -130,9 +118,6 @@ calc_bh_se(Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options> &snpmat,
   using Mat= typename Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Options>;
   using Array= typename Eigen::Array<T,Eigen::Dynamic,1,Options>;
 
-
-  center_columns(snpmat);
-  center_columns(expmat);
   Array sx2;
   Array sy;
   calc_sx2(snpmat,sx2);
@@ -154,13 +139,7 @@ Rcpp::ListOf<Rcpp::NumericMatrix> calc_uh_se_exp(const Eigen::MatrixXd input_snp
   using namespace Rcpp;
   auto ret = calc_bh_se(snp_cp,exp_cp);
   return(Rcpp::List::create(_["UH"]=Rcpp::wrap(ret.first),_["se"]=Rcpp::wrap(ret.second)));
-
 }
-
-
-
-
-
 
 
 
@@ -180,11 +159,10 @@ Eigen::MatrixXd evd_rnorm_i(const Eigen::Map<Eigen::MatrixXd> Q, const Eigen::Ma
 
 //[[Rcpp::export]]
 void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true){
-  register_blosc(nullptr,nullptr);
 
   //const Rcpp::DataFrame q_dff ,const Rcpp::DataFrame uh_dff,const Rcpp::DataFrame quh_dff
   auto r = register_blosc(nullptr,nullptr);
-
+  register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   FileManager<false> wf(Rcpp::StringVector::create());
   DataQueue<2,double,true> Q_f(file_l["Q"],rf);
@@ -233,10 +211,6 @@ void sim_U(const int p, Eigen::VectorXd tsigu, Eigen::MatrixXd &eX){
   auto norm = [&] (double) {return d(gen);};
   eX = Eigen::MatrixXd::NullaryExpr(p,g,norm).array().rowwise()*tsigu.array().transpose();
 }
-
-
-
-
 //[[Rcpp::export(name="sim_U")]]
 Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunksize=2){
   const int g=tsigu.size();
@@ -246,7 +220,6 @@ Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunk
   auto t1 = tbb::tick_count::now();
   using namespace Rcpp;
   double ret= (t1-t0).seconds();
-
   return(wrap(X));
 }
 
@@ -254,7 +227,7 @@ Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunk
 //[[Rcpp::export]]
 Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l){
   auto r = register_blosc(nullptr,nullptr);
-
+  register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   DataQueue<2,double,true> SNP_f(file_l,rf);
 
@@ -294,11 +267,15 @@ Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l){
 
 
 
+
+
+
+
 //[[Rcpp::export]]
 Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l ,const int p, const int N,const int g,Eigen::ArrayXd &tsigu,Rcpp::NumericVector Af=Rcpp::NumericVector::create()){
 
   auto r = register_blosc(nullptr,nullptr);
-
+  register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   FileManager<false> wf(Rcpp::StringVector::create());
   DataQueue<2,double,true> SNP_f(file_l["SNP"],rf);
@@ -392,7 +369,7 @@ Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l ,const int p, const int N,
 Eigen::MatrixXd est_spve_h5(const Rcpp::List file_l ,const int N,Eigen::ArrayXd &sigu,const double rel_D_cutoff=0.01){
 
   auto tr = register_blosc(nullptr,nullptr);
-
+  register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   FileManager<false> wf(Rcpp::StringVector::create());
   //  DataQueue<2,double,true> se_f(file_l["se"],rf);
@@ -444,63 +421,35 @@ Eigen::MatrixXd est_spve_h5(const Rcpp::List file_l ,const int N,Eigen::ArrayXd 
 }
 
 
-
-
-// Eigen::MatrixXd true_spve_h5(const Rcpp::List file_l ,const int N){
-
-//   auto tr = register_blosc(nullptr,nullptr);
-
-//   FileManager<true> rf(Rcpp::StringVector::create());
-//   FileManager<false> wf(Rcpp::StringVector::create());
-//   DataQueue<2,double,true> se_f(file_l["se"],rf);
-//   DataQueue<2,double,true> uh_f(file_l["uh"],rf);
-//   DataQueue<2,double,true> R_f(file_l["R"],rf);
-//   DataQueue<2,double,true> quh_f(file_l["quh"],rf);
-//   DataQueue<2,double,true> q_f(file_l["Q"],rf);
-//   DataQueue<2,double,true> beta_mean_f(file_l["Beta"],rf);
-
-//   using Mat = Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic>;
-//   Mat uh,se,q,r,quh,beta_mean,pve_est;
-//   const size_t g = se_f.get_selection_dims().front().back();
+//[[Rcpp::export]]
+Eigen::MatrixXd orthogonalize_data(Eigen::MatrixXd &data, const Eigen::MatrixXd &ortho_covar){
+  return(data-((data.transpose()*ortho_covar)*ortho_covar.transpose()).transpose());
+}
 
 
 
+//[[Rcpp::export]]
+Eigen::MatrixXd orthogonalize_covars(Eigen::MatrixXd &Covariates){
 
-//   const int tot_size = se_f.getNumSelections();
-//   Progress prog_bar(tot_size*g, true);
-//   pve_est.resize(tot_size,g);
-//   for(int i=0;i<tot_size;i++){
-//     se_f.readMat(i,se,false);
-//     const int g=se.cols();
-//     uh_f.readMat(i,uh,false);
-//     quh_f.readMat(i,quh,false);
-//     R_f.readMat(i,r,false);
-//     q_f.readMat(i,q,false);
-//     beta_mean_f.readMat(i,beta_mean,true);
-
-
-//     uh=((uh.array()*se.array()).array().square()+N*se.array().square());
-
-//     for(int j=0;j<g;j++){
-//       pve_est(i,j)=(((beta_mean.col(j)*beta_mean.col(j).transpose()).array()*r.array())/(uh.col(j)*uh.col(j).transpose()).array().sqrt()).sum();
-//       prog_bar.increment();
-//     }
-
-//   }
-//   return(pve_est);
-// }
-
-
-
-
-
-
+  const size_t ortho_rows = Covariates.rows();
+  const size_t ortho_cols =Covariates.cols();
+  //Check to see if we've added a 'bias' column
+  Eigen::MatrixXd tcol=Eigen::MatrixXd::Constant(ortho_rows, 1, 1.0);
+  if(Covariates.col(ortho_cols-1)!=tcol){
+    Rcpp::Rcerr<<"Adding constant term column"<<std::endl;
+    Covariates.conservativeResize(Eigen::NoChange, ortho_cols+1);
+    Covariates.col(ortho_cols) = tcol;
+  }
+  Eigen::HouseholderQR<Eigen::MatrixXd> qr(Covariates);
+  Eigen::MatrixXd Q=qr.householderQ();
+  return(Q.leftCols(Covariates.cols()));
+}
 
 
 
 
 //[[Rcpp::export]]
-void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const Rcpp::List uhat_dff,const Rcpp::List se_dff,Rcpp::NumericVector Af=Rcpp::NumericVector::create()){
+void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const Rcpp::List uhat_dff,const Rcpp::List se_dff,Eigen::MatrixXd Covariates){
 
   using Mat = Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic>;
   const bool EXP_first=true;
@@ -508,7 +457,8 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
 
   using namespace HighFive;
   register_blosc(nullptr,nullptr);
-  const bool use_AF= Af.size()>0;
+  register_zstd();
+  Mat ortho_covars= orthogonalize_covars(Covariates);
 
 
 
@@ -522,6 +472,8 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   DataQueue<2,double,false> se_f(se_dff,wf);
 
   Rcpp::Rcerr<<"Using "<<Eigen::nbThreads( )<<" threads"<<std::endl;
+
+
   const size_t snp_rsize = SNP_f.getNumSelections();
   const size_t exp_rsize = EXP_f.getNumSelections();
 
@@ -553,23 +505,31 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   Mat UH_chunk;
   Mat se_chunk;
   Mat SNP_chunk;
+  Mat ortho_EXP;
+  Mat ortho_SNP;
   const int tot_size = SNP_f.getNumSelections()*EXP_f.getNumSelections();
 
   Progress prog_bar(tot_size, true);
   for(int i=0;i<exp_rsize;i++){
     EXP_f.readMat(i,EXP_chunk,EXP_first);
+    ortho_EXP=orthogonalize_data(EXP_chunk,ortho_covars);
+    if((ortho_EXP.rows()!=EXP_chunk.rows()) || (ortho_EXP.cols()!=EXP_chunk.cols())){
+      Rcpp::stop("orthogonalization (of EXPs) has gone awry!");
+    }
     const int g=EXP_chunk.cols();
-    const int N=EXP_chunk.rows();
     for(int j=0;j<snp_rsize;j++){
       SNP_f.readMat(j,SNP_chunk ,SNP_first);
-      if(SNP_chunk.rows()!=EXP_chunk.rows()){
+      ortho_SNP=orthogonalize_data(SNP_chunk,ortho_covars);
+      if((ortho_SNP.rows()!=SNP_chunk.rows()) || (ortho_SNP.cols()!=SNP_chunk.cols())){
+	Rcpp::stop("orthogonalization (of SNPs) has gone awry!");
+      }
+      if(ortho_SNP.rows()!=ortho_EXP.rows()){
         Rcpp::Rcerr<<"In SNP_chunk: "<<j<<" SNP_chunk is :"<<SNP_chunk.rows()<<" x "<<SNP_chunk.cols()<<std::endl;
         Rcpp::Rcerr<<"In EXP_chunk: "<<i<<" EXP_chunk is :"<<EXP_chunk.rows()<<" x "<<EXP_chunk.cols()<<std::endl;
         Rcpp::stop("Chunksize mismatch!");
       }
-      const int	tp=SNP_chunk.cols();
-
-      auto uh_se= calc_bh_se(SNP_chunk,EXP_chunk);
+      const int	tp=ortho_SNP.cols();
+      auto uh_se= calc_bh_se(ortho_SNP,ortho_EXP);
       uh_f.writeMat(rk,uh_se.first);
       se_f.writeMat(rk,uh_se.second);
       rk++;

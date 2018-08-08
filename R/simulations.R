@@ -5,7 +5,7 @@
 #' @param n sample size
 #' @param p number of SNPs
 #' @param fgeneid name for each trait (defaults to 1:ntraits)
-gen_tparamdf_norm <- function(pve=NULL, bias = 0, nreps, n, p,fgeneid=NULL,sigu=NULL){
+gen_tparamdf_norm <- function(pve=NULL, bias = 0, nreps, n, p,pcovar=0,fgeneid=NULL,sigu=NULL){
 
     stopifnot(xor(is.null(pve),is.null(sigu)))
     if(!is.null(sigu)){
@@ -25,7 +25,7 @@ gen_tparamdf_norm <- function(pve=NULL, bias = 0, nreps, n, p,fgeneid=NULL,sigu=
         dplyr::mutate(replicate=1:n()) %>%
         dplyr::ungroup() %>%
         dplyr::mutate(fgeneid=as.character(1:n()), tsigu=sqrt(n/p*tpve),tbias=tpve*tbias) %>%
-        dplyr::select(-replicate)
+        dplyr::select(-replicate) %>% mutate(pcovar=pcovar)
     if(!is.null(tfgeneid)){
         stopifnot(nrow(rfp)==length(tfgeneid))
         rfp <- dplyr::mutate(rfp,fgeneid=as.character(tfgeneid))
@@ -138,14 +138,35 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,AF=numeric(),sim_i
     dims_beta <-as.integer(c(g,p))
 
     EigenH5::create_matrix_h5(filename = beta_h5file,
-                              groupname = "/",
-                              dataname = "Beta",
+                              datapath="Beta",
                               data = numeric(),
                               dims = dims_beta,
                               chunksizes=as.integer(c(g,100)))
-    EigenH5::write_vector_h5(filename = beta_h5file, groupname = "/", dataname="S",data = runif(p))
+    EigenH5::write_vector_h5(data = runif(p),filename = beta_h5file, datapath="S")
     ymat <- simulate_y_h5(list(SNP=snp_lff,Beta=beta_lff,S=S_lff),p,N,g,tparam_df$tsigu,Af=AF)
     return(ymat)
+}
+
+
+gen_sim_resid_covar <- function(ty,tparam_df,C=matrix(1,nrow=nrow(ty),ncol=1),covar_wf = NULL){
+  ncovar <- ncol(C)
+  stopifnot(ncovar==1L)
+  vy <- apply(ty, 2, var)
+  n <- nrow(ty)
+  stopifnot(ncol(ty)==nrow(tparam_df))
+  residvec <- gen_ti(vy, tparam_df$tpve)
+  if(is.null(tparam_df$covarp)){
+    tparam_df$covarp <- 0
+  }
+  covarvec <- residvec*(tparam_df$covarp)
+  covar_effect <-sapply(covarvec,function(ti){C*ti})
+  if(!is.null(covar_wf)){
+    covar_wf(covar_effect)
+  }
+  residvec <-(1-tparam_df$covarp)*residvec
+  residmat <- sapply(residvec, function(ti, n){rnorm(n=n, mean=0, sd=sqrt(ti))}, n=n)
+  ymat <- scale(ty+residmat, center=T, scale=F)
+  return(ymat)
 }
 
 
