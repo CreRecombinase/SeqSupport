@@ -1,5 +1,4 @@
 useDynLib(SeqSupport,.registration=TRUE)
-import(libblosc)
 import(RcppEigen)
 import(EigenH5)
 importFrom(Rcpp, evalCpp)
