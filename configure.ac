@@ -1,13 +1,16 @@
 # Process this file with autoconf to produce a configure script.
 # author: Nicholas Knoblauch (nwknoblauch@gmail.com)
 AC_PREREQ([2.65])
-AC_INIT([EigenH5], [1.2], [nwknoblauch@gmail.com])
+AC_INIT([SeqSupport], [1.2], [nwknoblauch@gmail.com])
 #AC_CONFIG_SRCDIR([src])
 
 
 m4_include([inst/m4/ax_lib_hdf5.m4])
 m4_include([inst/m4/ax_compare_version.m4])
 #m4_include([inst/m4/hh_hdf5rlib.m4])
+
+
+AX_LIB_HDF5()
 
 #AC_PATH_PROG([PKGCONF], [pkg-config], [], [$PATH:/usr/local/bin:ext/bin:ext:/sw/bin:/opt/bin])
 #PKG_CHECK_MODULES([BLOSC], [blosc])
