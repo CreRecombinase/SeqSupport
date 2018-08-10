@@ -558,39 +558,33 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
     chunksize <-tchunksize
   }
   EigenH5::create_matrix_h5(filename = hdf5file,
-                            groupname = "/",
-                            dataname = "dosage",
+                            datapath = "dosage",
+                            data = numeric(),
                             dims = dims,
-                            data=numeric(),
                             chunksizes = as.integer(c(chunksize,N)))
-  write_chunk <-function(index,x,h5loc,is_haplo,N){
-    if(is_haplo){
-      tobj <- t(2.0-x)
+  write_chunk <- function(index,x,h5loc,is_haplo,N){
+    if (is_haplo) {
+      tobj <- t(2.0 - x)
     }else{
       tobj <- t(x)
     }
-    tp <-nrow(tobj)
-    oindex_r <-snp_info$nsnp_id[seq.int(from=index,length.out = tp)]
+    tp <- nrow(tobj)
+    oindex_r <- snp_info$nsnp_id[seq.int(from = index, length.out = tp)]
     oindex <- oindex_r[1]
-    stopifnot(all(oindex_r==seq.int(from=oindex,length.out = tp)))
-    stopifnot(ncol(tobj)==N)
-    # stopifnot(all(tobj>=0))
-    EigenH5::write_matrix_h5(filename = h5loc,
-                                  groupname="/",
-                                  dataname="dosage",
-                                  offsets = c(oindex-1,0L),
-                             data = tobj)
+    stopifnot(all(oindex_r == seq.int(from = oindex, length.out = tp)))
+    stopifnot(ncol(tobj) == N)
+    EigenH5::write_matrix_h5(data = tobj,filename = h5loc,
+                             datapath = "dosage",
+                             offsets = c(oindex - 1, 0L))
 
   }
-  # chrs <-as.character(unique(snp_info$chr))
-
-  seqBlockApply(gdsfile = gds,
+  SeqArray::seqBlockApply(gdsfile = gds,
                 var.name = "$dosage",
-                FUN =write_chunk,
-                h5loc=hdf5file,
-                is_haplo=is_haplo,
-                N=N,
-                var.index="relative")
+                FUN = write_chunk,
+                h5loc = hdf5file,
+                is_haplo = is_haplo,
+                N = N,
+                var.index = "relative")
 
 }
 
