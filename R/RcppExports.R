@@ -49,7 +49,7 @@ orthogonalize_covars <- function(Covariates) {
     .Call(`_SeqSupport_orthogonalize_covars`, Covariates)
 }
 
-map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, Covariates) {
-    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, Covariates))
+map_eQTL_chunk_h5 <- function(snp_dff, exp_dff, uhat_dff, se_dff, Covariates, options) {
+    invisible(.Call(`_SeqSupport_map_eQTL_chunk_h5`, snp_dff, exp_dff, uhat_dff, se_dff, Covariates, options))
 }
 

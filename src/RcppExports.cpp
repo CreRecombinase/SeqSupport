@@ -159,8 +159,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // map_eQTL_chunk_h5
-void map_eQTL_chunk_h5(const Rcpp::List snp_dff, const Rcpp::List exp_dff, const Rcpp::List uhat_dff, const Rcpp::List se_dff, Eigen::MatrixXd Covariates);
-RcppExport SEXP _SeqSupport_map_eQTL_chunk_h5(SEXP snp_dffSEXP, SEXP exp_dffSEXP, SEXP uhat_dffSEXP, SEXP se_dffSEXP, SEXP CovariatesSEXP) {
+void map_eQTL_chunk_h5(const Rcpp::List snp_dff, const Rcpp::List exp_dff, const Rcpp::List uhat_dff, const Rcpp::List se_dff, Eigen::MatrixXd Covariates, Rcpp::List options);
+RcppExport SEXP _SeqSupport_map_eQTL_chunk_h5(SEXP snp_dffSEXP, SEXP exp_dffSEXP, SEXP uhat_dffSEXP, SEXP se_dffSEXP, SEXP CovariatesSEXP, SEXP optionsSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::List >::type snp_dff(snp_dffSEXP);
@@ -168,7 +168,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const Rcpp::List >::type uhat_dff(uhat_dffSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List >::type se_dff(se_dffSEXP);
     Rcpp::traits::input_parameter< Eigen::MatrixXd >::type Covariates(CovariatesSEXP);
-    map_eQTL_chunk_h5(snp_dff, exp_dff, uhat_dff, se_dff, Covariates);
+    Rcpp::traits::input_parameter< Rcpp::List >::type options(optionsSEXP);
+    map_eQTL_chunk_h5(snp_dff, exp_dff, uhat_dff, se_dff, Covariates, options);
     return R_NilValue;
 END_RCPP
 }
@@ -188,7 +189,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SeqSupport_est_spve_h5", (DL_FUNC) &_SeqSupport_est_spve_h5, 4},
     {"_SeqSupport_orthogonalize_data", (DL_FUNC) &_SeqSupport_orthogonalize_data, 2},
     {"_SeqSupport_orthogonalize_covars", (DL_FUNC) &_SeqSupport_orthogonalize_covars, 1},
-    {"_SeqSupport_map_eQTL_chunk_h5", (DL_FUNC) &_SeqSupport_map_eQTL_chunk_h5, 5},
+    {"_SeqSupport_map_eQTL_chunk_h5", (DL_FUNC) &_SeqSupport_map_eQTL_chunk_h5, 6},
     {"run_testthat_tests",               (DL_FUNC) &run_testthat_tests,               0},
     {NULL, NULL, 0}
 };
