@@ -3,7 +3,7 @@
 //[[Rcpp::plugins(cpp17)]]
 #include <RcppParallel.h>
 #include<H5Tpublic.h>
-
+// [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppParallel)]]
 
 
@@ -454,6 +454,9 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   using Mat = Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic>;
   const bool EXP_first=get_list_scalar<bool>(options,"EXPfirst").value_or(true);
   const bool progress=get_list_scalar<bool>(options,"progress").value_or(true);
+  const int thread_num =get_list_scalar<int>(options,"threads").value_or(Eigen::nbThreads( ));
+  Rcpp::Rcerr<<"thread num is set to"<<thread_num<<std::endl;
+  Eigen::setNbThreads(thread_num);
 
   // if(!EXP_first){
   //   Rcpp::Rcerr<<"EXP data is Nxg"<<std::endl;
@@ -479,7 +482,8 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   DataQueue<2,double,false> uh_f(uhat_dff,wf);
   DataQueue<2,double,false> se_f(se_dff,wf);
 
-  Rcpp::Rcerr<<"Using "<<Eigen::nbThreads( )<<" threads"<<std::endl;
+
+  Rcpp::Rcerr<<"Using "<<  Eigen::nbThreads( )<<" threads"<<std::endl;
 
 
   const size_t snp_rsize = SNP_f.getNumSelections();

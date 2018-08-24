@@ -1,8 +1,6 @@
 CXX_STD = CXX17
-RHDF5_LIBS=`echo 'Rhdf5lib::pkgconfig("PKG_C_LIBS")'|\
-    "${R_HOME}/bin/R" --vanilla --slave`
 BLOSC_CFLAGS+=$(shell echo 'libblosc::pkgconfig("PKG_CFLAGS")'|\
 "${R_HOME}/bin/R" --vanilla --slave)
 PKG_LIBS += @HDF5_LIBS@   -lstdc++fs @LIBS@
-PKG_LIBS += $(RHDF5_LIBS) -lstdc++fs $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
-PKG_CPPFLAGS += -I../inst/include -DUSE_BLOSC -DH5_USE_EIGEN ${BLOSC_CFLAGS} -Wno-ignored-attributes -DUSE_MKL
+PKG_LIBS += -lstdc++fs $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()") -fopenmp
+PKG_CPPFLAGS += -I../inst/include -DUSE_BLOSC -DH5_USE_EIGEN ${BLOSC_CFLAGS} -Wno-ignored-attributes -DUSE_MKL -fopenmp

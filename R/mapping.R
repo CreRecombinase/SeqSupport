@@ -11,6 +11,7 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
                         subgwasf=NULL,
                         subsnpf=NULL,
                         progress=TRUE,
+                        threads=parallel::detectCores(),
                         ...){
 
 
@@ -45,13 +46,21 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
     }
 
     if(!is.null(subgwasf)){
-        ind_v <- readRDS(subgwasf)
+        if(tools::file_ext(subgwasf)=="h5"){
+            ind_v <- read_vector_h5(subgwasf,"SampleInfo/sample_id")
+        }else{
+            ind_v <- readRDS(subgwasf)
+        }
     }else{
         ind_v  <- 1:N
     }
 
     if(!is.null(subsnpf)){
-        snp_df <- read_delim(subsnpf,delim="\t")
+        if(tools::file_ext(subsnpf)=="h5"){
+            snp_df <- read_df_h5(subsnpf,snp_info)
+        }else{
+            snp_df <- read_delim(subsnpf,delim="\t")
+        }
     }else{
         snp_df <- EigenH5::read_df_h5(snp_h5,snp_info)
     }
@@ -77,15 +86,15 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
                                                datapath=snp_path))
     }
 
-  exp_df <- exp_df %>%  dplyr::mutate(exp_chunk=ggplot2::cut_number(fgeneid,exp_chunks,labels=F),exp_chunk_id=1:n())
-  exp_l <-  split(select(exp_df,fgeneid,exp_chunk,exp_chunk_id),exp_df$exp_chunk)
+  exp_df <- exp_df %>%  dplyr::mutate(exp_chunk=ggplot2::cut_number(trait_id,exp_chunks,labels=F),exp_chunk_id=1:n())
+  exp_l <-  split(select(exp_df,trait_id,exp_chunk,exp_chunk_id),exp_df$exp_chunk)
 
     if(EXPfirst){
-        exp_lff  <- exp_l %>% purrr::map(~list(subset_rows=.x$fgeneid,
+        exp_lff  <- exp_l %>% purrr::map(~list(subset_rows=.x$trait_id,
                                                filename=exp_h5,
                                                datapath=exp_path))
     }else{
-        exp_lff  <- exp_l %>% purrr::map(~list(subset_cols=.x$fgeneid,
+        exp_lff  <- exp_l %>% purrr::map(~list(subset_cols=.x$trait_id,
                                                filename=exp_h5,
                                                datapath=exp_path))
     }
@@ -98,7 +107,9 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
     se_lff <-map(uh_lff,~update_list(.,datapath="se"))
     EigenH5::create_matrix_h5(uh_h5,"uh", numeric(),dims=as.integer(c(p,g)))
     EigenH5::create_matrix_h5(uh_h5,"se", numeric(),dims=as.integer(c(p,g)))
-    map_eQTL_chunk_h5(snp_lff,exp_lff,uh_lff,se_lff,cvrt_mat,
+    map_eQTL_chunk_h5(snp_lff,exp_lff,uh_lff,se_lff,covarmat,
                       options=list(SNPfirst=SNPfirst,
-                                   EXPfirst=EXPfirst,progress=progress))
+                                   EXPfirst=EXPfirst,
+                                   progress=progress,
+                                   threads=threads))
 }
