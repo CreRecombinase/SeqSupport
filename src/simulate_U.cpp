@@ -225,34 +225,42 @@ Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunk
 
 
 //[[Rcpp::export]]
-Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l){
+Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l,const Rcpp::List options){
   auto r = register_blosc(nullptr,nullptr);
   register_zstd();
+  using	num_type = float;
   FileManager<true> rf(Rcpp::StringVector::create());
-  DataQueue<2,double,true> SNP_f(file_l,rf);
+  const bool SNP_first=get_list_scalar<bool>(options,"SNPfirst").value_or(true);
+  DataQueue<2,num_type,true> SNP_f(file_l,rf);
 
   const int num_reg = SNP_f.getNumSelections();
 
   auto dimvec_SNP = SNP_f.get_selection_dims();
 
-  const int N=dimvec_SNP.front().back();
-  const double Nd = 2*N;
+  const int N= SNP_first ? dimvec_SNP.front().back() : dimvec_SNP.front().front();
+  const num_type Nd = 2*N;
   int p=1;
   for(int i=0; i<num_reg;i++){
-    auto dvSNP = dimvec_SNP[i].front();
+    auto dvSNP =  SNP_first ? dimvec_SNP[i].front() : dimvec_SNP[i].back();
+    //    Rcpp::Rcerr<<"chunk: "<<i<<" is of size "<<dvSNP
     p+=dvSNP;
   }
-  using Mat=Eigen::MatrixXd;
+  Rcpp::Rcerr<<"There are "<<p<<"SNPs in total from "<<num_reg<<"chunks to calculate allele frequency for"<<std::endl;
+  using Mat=Eigen::Matrix<num_type,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor>;
 
   Mat X;
-  std::vector<double> retvec;
+  std::vector<num_type> retvec;
   retvec.reserve(p);
-  Eigen::VectorXd Af;
+  Eigen::Matrix<num_type,Eigen::Dynamic,1> Af;
 
   Progress prog_bar(num_reg, true);
   for(int i=0; i<num_reg;i++){
     //  int chunk_id = m_it->first;
-    SNP_f.readMat(i,X ,false);
+    SNP_f.readMat(i,X,!SNP_first);
+    if(X.cols()!=N){
+      Rcpp::Rcerr<<"in chunk: "<<i<<", X is "<<X.rows()<<"x"<<X.cols()<<"Where it should have "<<N<<" columns"<<std::endl;
+      Rcpp::stop("Improper dimensions for matrix in calc_af_h5");
+    }
     //    X = X.rowwise()-X.colwise().mean();
     Af = X.array().rowwise().sum()/Nd;
     retvec.insert(retvec.end(),Af.data(),Af.data()+Af.size());
@@ -260,6 +268,12 @@ Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l){
     //    S_f.writeVector(i,Af);
     prog_bar.increment();
   }
+  if(retvec.size()!=p){
+    Rcpp::stop("retvec must be exactly size: "+std::to_string(p)+" but is size: "+std::to_string(retvec.size()));
+  }else{
+    Rcpp::Rcout<<"Success calculating allele frequency"<<std::endl;
+  }
+
   return(Rcpp::wrap(retvec));
 }
 

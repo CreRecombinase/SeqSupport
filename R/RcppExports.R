@@ -29,8 +29,8 @@ sim_U <- function(n, tsigu, chunksize = 2L) {
     .Call(`_SeqSupport_sim_U_exp`, n, tsigu, chunksize)
 }
 
-calc_af_h5 <- function(file_l) {
-    .Call(`_SeqSupport_calc_af_h5`, file_l)
+calc_af_h5 <- function(file_l, options) {
+    .Call(`_SeqSupport_calc_af_h5`, file_l, options)
 }
 
 simulate_y_h5 <- function(file_l, p, N, g, tsigu, Af = as.numeric( c())) {

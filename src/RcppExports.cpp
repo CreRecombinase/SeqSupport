@@ -95,13 +95,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // calc_af_h5
-Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l);
-RcppExport SEXP _SeqSupport_calc_af_h5(SEXP file_lSEXP) {
+Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l, const Rcpp::List options);
+RcppExport SEXP _SeqSupport_calc_af_h5(SEXP file_lSEXP, SEXP optionsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::List >::type file_l(file_lSEXP);
-    rcpp_result_gen = Rcpp::wrap(calc_af_h5(file_l));
+    Rcpp::traits::input_parameter< const Rcpp::List >::type options(optionsSEXP);
+    rcpp_result_gen = Rcpp::wrap(calc_af_h5(file_l, options));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -184,7 +185,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SeqSupport_evd_rnorm_i", (DL_FUNC) &_SeqSupport_evd_rnorm_i, 3},
     {"_SeqSupport_crossprod_quh_h5", (DL_FUNC) &_SeqSupport_crossprod_quh_h5, 2},
     {"_SeqSupport_sim_U_exp", (DL_FUNC) &_SeqSupport_sim_U_exp, 3},
-    {"_SeqSupport_calc_af_h5", (DL_FUNC) &_SeqSupport_calc_af_h5, 1},
+    {"_SeqSupport_calc_af_h5", (DL_FUNC) &_SeqSupport_calc_af_h5, 2},
     {"_SeqSupport_simulate_y_h5", (DL_FUNC) &_SeqSupport_simulate_y_h5, 6},
     {"_SeqSupport_est_spve_h5", (DL_FUNC) &_SeqSupport_est_spve_h5, 4},
     {"_SeqSupport_orthogonalize_data", (DL_FUNC) &_SeqSupport_orthogonalize_data, 2},
