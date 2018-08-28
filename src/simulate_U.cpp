@@ -239,7 +239,7 @@ Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l,const Rcpp::List options)
 
   const int N= SNP_first ? dimvec_SNP.front().back() : dimvec_SNP.front().front();
   const num_type Nd = 2*N;
-  int p=1;
+  int p=0;
   for(int i=0; i<num_reg;i++){
     auto dvSNP =  SNP_first ? dimvec_SNP[i].front() : dimvec_SNP[i].back();
     //    Rcpp::Rcerr<<"chunk: "<<i<<" is of size "<<dvSNP
