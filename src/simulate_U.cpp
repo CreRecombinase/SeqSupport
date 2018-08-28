@@ -246,7 +246,7 @@ Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l,const Rcpp::List options)
     p+=dvSNP;
   }
   Rcpp::Rcerr<<"There are "<<p<<"SNPs in total from "<<num_reg<<"chunks to calculate allele frequency for"<<std::endl;
-  using Mat=Eigen::Matrix<num_type,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor>;
+  using Mat=Eigen::Matrix<num_type,Eigen::Dynamic,Eigen::Dynamic>;
 
   Mat X;
   std::vector<num_type> retvec;
