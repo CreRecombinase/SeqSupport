@@ -17,6 +17,7 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
 
 
     exp_df <-read_df_h5(exp_h5,exp_info)
+    write_df_h5(exp_df, uh_h5, "Traitinfo")
     g <- nrow(exp_df)
 
     expdims <- dim_h5(exp_h5,exp_path)
@@ -64,6 +65,7 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
     }else{
         snp_df <- EigenH5::read_df_h5(snp_h5,snp_info)
     }
+
     p <- nrow(snp_df)
     dim_dosage <- EigenH5::dim_h5(snp_h5,snp_path)
     SNPfirst <-dim_dosage[2]==N
@@ -71,6 +73,7 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
 
     snp_chunks <- max(c(ceiling(p/snp_chunksize),1))
     exp_chunks  <-max(c(ceiling(g/exp_chunksize),1))
+    write_df_h5(snp_df,uh_h5,"SNPinfo")
 
 
     snp_df <- snp_df %>%  dplyr::mutate(snp_chunk=ggplot2::cut_number(x=snp_id,n=snp_chunks,labels=F),snp_chunk_id=1:n())
@@ -112,4 +115,6 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
                                    EXPfirst=EXPfirst,
                                    progress=progress,
                                    threads=threads))
+
+
 }

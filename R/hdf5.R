@@ -454,7 +454,7 @@ gen_map_eqtl_df <- function(snpfile,expfile,uhfile,snp_chunksize=50000,exp_chunk
 #' }
 
 
-gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
+gds2hdf5 <- function(gdsfile,hdf5file,snp_info=NULL,deflate_level=4L){
   # library(rhdf5)
   is_c <- class(gdsfile)=="character"
   if(is_c){
@@ -462,9 +462,11 @@ gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
   }else{
     gds <- gdsfile
   }
-    snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
-        dplyr::mutate(chr=as.integer(chr)) %>% dplyr::mutate(snp_id=as.integer(ifelse(!is.integer(snp_id),1:n(),snp_id))) %>%
+    if(is.null(snp_info)){
+        snp_info <-read_SNPinfo_gds(gds,alleles=T,MAF=T,region_id=F,map = F,info=T,more=list(rs="annotation/id")) %>%
+            dplyr::mutate(chr=as.integer(chr)) %>%
         dplyr::arrange(chr,pos) %>% dplyr::mutate(nsnp_id=1:n())
+    }
     stopifnot(dplyr::group_by(snp_info,chr) %>%
               dplyr::summarise(is_sorted=!is.unsorted(snp_id)) %>%
               dplyr::summarise(is_sorted=all(is_sorted)) %>%
@@ -472,9 +474,8 @@ gds2hdf5 <- function(gdsfile,hdf5file,deflate_level=4L){
     dosage2hdf5(gds=gds,hdf5file=hdf5file,snp_info=snp_info)
     snp_info <- dplyr::mutate(snp_info,snp_id=nsnp_id) %>% dplyr::select(-nsnp_id)
     sample_info <- tibble::data_frame(sample_id=seqGetData(gds,"sample.id"))
-    EigenH5::write_df_h5(sample_info,"SampleInfo",hdf5file)
-    EigenH5::write_df_h5(df = snp_info,groupname = "SNPinfo",hdf5file)
-    #Close it if we opened it
+    EigenH5::write_df_h5(sample_info,hdf5file,"SampleInfo")
+    EigenH5::write_df_h5(df = snp_info,hdf5file,"SNPinfo")
     if(is_c){
       seqClose(gds)
     }
@@ -540,7 +541,7 @@ read_uh_df <- function(h5file,subvecs=NULL,evdf=NULL){
 }
 
 dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
-  #library(rhdf5)
+
   p <- calc_p(gds)
   N <- calc_N(gds)
   dims <- as.integer(c(p,N))
@@ -549,7 +550,7 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
     dir.create(dirname(hdf5file))
   }
   if(!file.exists(hdf5file)){
-   # h5createFile(hdf5file)
+
   }
   chunksize_max <- 1024^2
   if(prod(c(chunksize,N))>chunksize_max){
@@ -562,6 +563,7 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
                             data = numeric(),
                             dims = dims,
                             chunksizes = as.integer(c(chunksize,N)))
+    stopifnot(all(EigenH5::dim_h5(hdf5file,"dosage")==dims))
   write_chunk <- function(index,x,h5loc,is_haplo,N){
     if (is_haplo) {
       tobj <- t(2.0 - x)
@@ -571,11 +573,12 @@ dosage2hdf5 <- function(gds,hdf5file,chunksize=c(150),snp_info){
     tp <- nrow(tobj)
     oindex_r <- snp_info$nsnp_id[seq.int(from = index, length.out = tp)]
     oindex <- oindex_r[1]
+
     stopifnot(all(oindex_r == seq.int(from = oindex, length.out = tp)))
     stopifnot(ncol(tobj) == N)
     EigenH5::write_matrix_h5(data = tobj,filename = h5loc,
                              datapath = "dosage",
-                             offsets = c(oindex - 1, 0L))
+                             offsets = c(oindex - 1, 0L),datasizes=dim(tobj))
 
   }
   SeqArray::seqBlockApply(gdsfile = gds,

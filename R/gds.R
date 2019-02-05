@@ -271,7 +271,7 @@ is_haplo <- function(gds,checkSNPs=F){
   samples <- SeqArray::seqGetData(gds,"sample.id")
   # sample_trim <- substr(samples,1,nchar(samples)-2)
 
-  sample_tail <- purrr::map_chr(strsplit(samples,split="-",fixed=T,useBytes=T),purrr::possibly(function(x)x[2],NA_character_,quiet=F))
+  sample_tail <- purrr::map_chr(strsplit(as.character(samples),split="-",fixed=T,useBytes=T),purrr::possibly(function(x)x[2],NA_character_,quiet=F))
   if(all(sample_tail %in% c("1","2"))){
     return(T)
   }
