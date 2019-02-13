@@ -1,5 +1,18 @@
 context("hdf5 (conversion from gds)")
 
+test_that("hdf5 df",{
+
+  snp_id <- 1:100
+  tf <- tempfile()
+  EigenH5::write_vector_h5(snp_id,tf,"SNPinfo/snp_id")
+  nl <- list()
+ndf <- read_snp_df(tf,nl)
+
+})
+
+
+
+
 test_that("We can convert from SeqArray GDS files",{
   gdsf <- system.file("test_19.gds",package="SeqSupport")
   outf <- tempfile()

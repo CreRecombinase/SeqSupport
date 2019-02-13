@@ -3,6 +3,7 @@
 //[[Rcpp::plugins(cpp17)]]
 #include <RcppParallel.h>
 #include<H5Tpublic.h>
+#include <random>
 // [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppParallel)]]
 
@@ -158,10 +159,10 @@ Eigen::MatrixXd evd_rnorm_i(const Eigen::Map<Eigen::MatrixXd> Q, const Eigen::Ma
 
 
 //[[Rcpp::export]]
-void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true){
+void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true,Rcpp::NumericVector allele_flip=Rcpp::NumericVector::create()){
 
   //const Rcpp::DataFrame q_dff ,const Rcpp::DataFrame uh_dff,const Rcpp::DataFrame quh_dff
-  auto r = register_blosc(nullptr,nullptr);
+//(nullptr,nullptr);
   register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   FileManager<false> wf(Rcpp::StringVector::create());
@@ -176,23 +177,42 @@ void crossprod_quh_h5(const Rcpp::List file_l,const bool doTranspose=true){
   if( in_q_size!=in_u_size || in_q_size != in_uh_size){
     Rcpp::stop("size of all elements of file_l must be equal!");
   }
-
+  bool use_af=allele_flip.size()>0;
+  std::vector<double> af=Rcpp::as<std::vector<double> >(allele_flip);
   using Mat= Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::ColMajor>;
+  Eigen::Map<Eigen::Array<double,Eigen::Dynamic,1> >am_chunk(nullptr,1);
   Mat Q;
   Mat uh;
   Mat Quh;
+
   Rcpp::Rcerr<<"Using "<<Eigen::nbThreads( )<<" threads"<<std::endl;
+  int t_offset=0;
   Progress prog_bar(in_q_size, true);
   for(int i=0; i<in_q_size; i++){
+
     //    Rcpp::Rcerr<<"Reading Q"<<std::endl;
     Q_f.readMat(i,Q,false);
     //    Rcpp::Rcerr<<"Reading uh"<<std::endl;
     uh_f.readMat(i,uh,false);
     //    Rcpp::Rcerr<<"Computing crossprod(Q,uh)"<<std::endl;
     if(doTranspose){
-    Quh.noalias() = Q.transpose()*uh;
+      if(use_af){
+        new (&am_chunk) Eigen::Map<Eigen::Array<double,Eigen::Dynamic,1> >(af.data()+t_offset,uh.rows());
+        t_offset+=uh.rows();
+        Quh.noalias() = Q.transpose()*(uh.array().colwise()*am_chunk).matrix();
+
+      }else{
+        Quh.noalias() = Q.transpose()*uh;
+      }
     }else{
+      if(use_af){
+        new (&am_chunk) Eigen::Map<Eigen::Array<double,Eigen::Dynamic,1> >(af.data()+t_offset,uh.rows());
+        t_offset+=uh.rows();
+        Quh.noalias() = Q*(uh.array().colwise()*am_chunk).matrix();
+      }
+      else{
       Quh.noalias() = Q*uh;
+      }
     }
     //    Rcpp::Rcerr<<"Writing quh"<<std::endl;
     Quh_f.writeMat(i,Quh);
@@ -226,7 +246,7 @@ Rcpp::NumericMatrix sim_U_exp(const int n, Eigen::VectorXd tsigu,const int chunk
 
 //[[Rcpp::export]]
 Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l,const Rcpp::List options){
-  auto r = register_blosc(nullptr,nullptr);
+//(nullptr,nullptr);
   register_zstd();
   using	num_type = float;
   FileManager<true> rf(Rcpp::StringVector::create());
@@ -285,94 +305,103 @@ Rcpp::NumericVector calc_af_h5(const Rcpp::List file_l,const Rcpp::List options)
 
 
 
-//[[Rcpp::export]]
-Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l ,const int p, const int N,const int g,Eigen::ArrayXd &tsigu,Rcpp::NumericVector Af=Rcpp::NumericVector::create()){
 
-  auto r = register_blosc(nullptr,nullptr);
-  register_zstd();
-  FileManager<true> rf(Rcpp::StringVector::create());
-  FileManager<false> wf(Rcpp::StringVector::create());
-  DataQueue<2,double,true> SNP_f(file_l["SNP"],rf);
+// Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l ,const int p, const int N,const int g,const Eigen::ArrayXd tsigu,const Eigen::ArrayXd tsigc){
 
-  DataQueue<1,double,false> S_f(file_l["S"],wf);
-  DataQueue<2,double,false> Beta_f(file_l["Beta"],wf);
-  const bool use_AF=Af.size()>0;
+// //(nullptr,nullptr);
+//   register_zstd();
+//   FileManager<true> rf(Rcpp::StringVector::create());
+//   FileManager<false> wf(Rcpp::StringVector::create());
+//   DataQueue<2,double,true> SNP_f(file_l["SNP"],rf);
 
-  if(use_AF){
-    if(Af.size()!=p){
-      Rcpp::stop("If specifying allele frequency(Af), length(Af) must be equal to p");
-    }
-  }
+//   DataQueue<2,double,true> Q_f(file_l["Q"],rf);
+//   DataQueue<1,double,true> D_f(file_l["D"],rf);
 
-  if((SNP_f.getNumSelections() != Beta_f.getNumSelections() )|| (Beta_f.getNumSelections() != S_f.getNumSelections() )){
-    Rcpp::stop("SNP,Beta and S must all have the same number of chunks in 'calc_af_h5'");
-  }
-  const int num_reg = SNP_f.getNumSelections();
+//   DataQueue<1,double,false> S_f(file_l["S"],wf);
+//   DataQueue<2,double,false> Betac_f(file_l["Betac"],wf);
 
-  auto dimvec_SNP = SNP_f.get_selection_dims();
-  auto dimvec_Beta = Beta_f.get_selection_dims();
-  auto dimvec_S = S_f.get_selection_dims();
+//   DataQueue<2,double,false> Beta_f(file_l["Beta"],wf);
 
 
 
+//   if((SNP_f.getNumSelections() != Beta_f.getNumSelections() )|| (Beta_f.getNumSelections() != S_f.getNumSelections() )){
+//     Rcpp::stop("SNP,Beta and S must all have the same number of chunks in 'calc_af_h5'");
+//   }
+//   const int num_reg = SNP_f.getNumSelections();
 
-  for(int i=0; i<num_reg;i++){
-    auto dvSNP = dimvec_SNP[i].front();
-    auto dvBeta = dimvec_Beta[i].back();
-    auto dvS = dimvec_S[i].front();
-    if((dvSNP!=dvBeta) || (dvS !=dvSNP)){
-      Rcpp::Rcerr<<"In selection i:"<<std::endl;
-      Rcpp::Rcerr<<"SNP selection size (rows): "<<dvSNP<<std::endl;
-      Rcpp::Rcerr<<"Beta selection size (rows): "<<dvBeta<<std::endl;
-      Rcpp::Rcerr<<"S selection size (rows): "<<dvS<<std::endl;
-      Rcpp::stop("Selection subsets must be equal!");
-    }
-  }
+//   auto dimvec_SNP = SNP_f.get_selection_dims();
+//   auto dimvec_Beta = Beta_f.get_selection_dims();
+//   auto dimvec_S = S_f.get_selection_dims();
+
+//   auto dimvec_Q = Q_f.get_selection_dims();
+//   auto dimvec_D = D_f.get_selection_dims();
+//   auto dimvec_Betac = Betac_f.get_selection_dims();
+
+//   for(int i=0; i<num_reg;i++){
+//     auto dvSNP = dimvec_SNP[i].front();
+//     auto dvBeta = dimvec_Beta[i].back();
+//     auto dvS = dimvec_S[i].front();
+//     if((dvSNP!=dvBeta) || (dvS !=dvSNP)){
+//       Rcpp::Rcerr<<"In selection i:"<<std::endl;
+//       Rcpp::Rcerr<<"SNP selection size (rows): "<<dvSNP<<std::endl;
+//       Rcpp::Rcerr<<"Beta selection size (rows): "<<dvBeta<<std::endl;
+//       Rcpp::Rcerr<<"S selection size (rows): "<<dvS<<std::endl;
+//       Rcpp::stop("Selection subsets must be equal!");
+//     }
+//   }
+
+//   using Mat=Eigen::MatrixXd;
+//   using Vec=Eigen::VectorXd;
+//   using MapMat=Eigen::Map<Mat>;
+//   using MapVec=Eigen::Map<Eigen::VectorXd>;
 
 
+//   // Mat y(N,g);
+//   Mat Beta;
+//   Mat U;
+//   Mat Betac;
+//   Mat Y=Mat::Zero(N,g);
+//   Vec S;
 
 
+//   Progress prog_bar(p, true);
+//   int cp=0;
+//   for(int i=0; i<num_reg;i++){
 
+//     MapMat X = SNP_f.readMat(i,true);
+//     MapMat Q = Q_f.readMat(i);
+//     MapVec D = D_f.readVector(i);
 
-  using Mat=Eigen::MatrixXd;
-  Mat X;
-  // Mat y(N,g);
-  Mat Beta;
-  Mat U;
-  Mat Y=Mat::Zero(N,g);
-  Eigen::VectorXd S;
-  // const int num_reg=std::distance(input_f.chunk_map.begin(),input_f.chunk_map.end());
-  Progress prog_bar(p, true);
-  int cp=0;
-  for(int i=0; i<num_reg;i++){
-  //  int chunk_id = m_it->first;
-    SNP_f.readMat(i,X ,true);
-    X = X.rowwise()-X.colwise().mean();
-    const size_t tp=X.cols();
-    if(use_AF){
-      S.resize(tp);
-      std::copy_n(&Af[cp],tp,S.data());
-      S=2*(S.array()*(1-S.array()));
-      S=(1/(S.array().sqrt()*std::sqrt(N-1)));
-    }else{
-      S = (1/(X.array().square().colwise().sum()/(N-1)).sqrt())*(1/std::sqrt(N-1));
-    }
-    cp+=tp;
-    sim_U(tp,tsigu,U);
+//     X = X.rowwise()-X.colwise().mean();
 
-    prog_bar.increment(tp);
-    Beta=U.array().colwise()*S.array();
-    Y+=X*Beta;
-    Beta.transposeInPlace();
-    Beta_f.writeMat(i,Beta);
-    S_f.writeVector(i,S);
-  }
-  if(cp!=p){
-    Rcpp::stop("number of total elements not equal to p");
-  }
+//     const size_t tp=X.cols();
 
-  return(Y);
-}
+//     S = (1/(X.array().square().colwise().sum()/(N-1)).sqrt())*(1/std::sqrt(N-1));
+
+//     cp+=tp;
+
+//     sim_U(tp,tsigu,U);
+//     sim_U(tp,tsigc,Betac);
+
+//     prog_bar.increment(tp);
+//     Beta=U.array().colwise()*S.array();
+
+//     Y+=X*(Beta+Q*(D.inverse().array()*Betac.array()).matrix());
+
+//     Beta.transposeInPlace();
+//     Beta_f.writeMat(i,Beta);
+
+//     Betac.transposeInPlace();
+//     Betac_f.writeMat(i,Betac);
+//     S_f.writeVector(i,S);
+
+//   }
+//   if(cp!=p){
+//     Rcpp::stop("number of total elements not equal to p");
+//   }
+
+//   return(Y);
+// }
 
 
 
@@ -382,7 +411,7 @@ Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l ,const int p, const int N,
 //[[Rcpp::export]]
 Eigen::MatrixXd est_spve_h5(const Rcpp::List file_l ,const int N,Eigen::ArrayXd &sigu,const double rel_D_cutoff=0.01){
 
-  auto tr = register_blosc(nullptr,nullptr);
+//(nullptr,nullptr);
   register_zstd();
   FileManager<true> rf(Rcpp::StringVector::create());
   FileManager<false> wf(Rcpp::StringVector::create());
@@ -480,7 +509,7 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   //   Rcpp::Rcerr<<"SNP data is Nxp"<<std::endl;
   // }
   using namespace HighFive;
-  register_blosc(nullptr,nullptr);
+//(nullptr,nullptr);
   register_zstd();
   // Rcpp::Rcerr<<"Covariates: "<<Covariates.rows()<<" x "<<Covariates.cols()<<std::endl;
 

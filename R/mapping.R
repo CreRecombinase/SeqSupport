@@ -88,18 +88,21 @@ map_eqtl_h5 <- function(snp_h5,exp_h5,
                                                filename=snp_h5,
                                                datapath=snp_path))
     }
-
-  exp_df <- exp_df %>%  dplyr::mutate(exp_chunk=ggplot2::cut_number(trait_id,exp_chunks,labels=F),exp_chunk_id=1:n())
-  exp_l <-  split(select(exp_df,trait_id,exp_chunk,exp_chunk_id),exp_df$exp_chunk)
+    if(nrow(exp_df)>1){
+      exp_df <- exp_df %>%  dplyr::mutate(exp_chunk=ggplot2::cut_number(trait_id,exp_chunks,labels=F),exp_chunk_id=1:n())
+    }else{
+      exp_df <- dplyr::mutate(exp_df,exp_chunk=1L,exp_chunk_id=1L)
+    }
+    exp_l <-  split(select(exp_df,trait_id,exp_chunk,exp_chunk_id),exp_df$exp_chunk)
 
     if(EXPfirst){
-        exp_lff  <- exp_l %>% purrr::map(~list(subset_rows=.x$trait_id,
-                                               filename=exp_h5,
-                                               datapath=exp_path))
+      exp_lff  <- exp_l %>% purrr::map(~list(subset_rows=.x$trait_id,
+                                             filename=exp_h5,
+                                             datapath=exp_path))
     }else{
-        exp_lff  <- exp_l %>% purrr::map(~list(subset_cols=.x$trait_id,
-                                               filename=exp_h5,
-                                               datapath=exp_path))
+      exp_lff  <- exp_l %>% purrr::map(~list(subset_cols=.x$trait_id,
+                                             filename=exp_h5,
+                                             datapath=exp_path))
     }
 
 

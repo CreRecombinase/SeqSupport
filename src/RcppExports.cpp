@@ -7,16 +7,6 @@
 
 using namespace Rcpp;
 
-// blosc
-int blosc();
-RcppExport SEXP _SeqSupport_blosc() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(blosc());
-    return rcpp_result_gen;
-END_RCPP
-}
 // ld_p_h5
 void ld_p_h5(const std::string input_filename, const std::string output_filename, const std::vector<size_t> subset_snp, const std::vector<size_t> snp_id, const std::vector<size_t> subset_ind, const std::vector<double> map, const size_t chunksize);
 RcppExport SEXP _SeqSupport_ld_p_h5(SEXP input_filenameSEXP, SEXP output_filenameSEXP, SEXP subset_snpSEXP, SEXP snp_idSEXP, SEXP subset_indSEXP, SEXP mapSEXP, SEXP chunksizeSEXP) {
@@ -71,13 +61,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // crossprod_quh_h5
-void crossprod_quh_h5(const Rcpp::List file_l, const bool doTranspose);
-RcppExport SEXP _SeqSupport_crossprod_quh_h5(SEXP file_lSEXP, SEXP doTransposeSEXP) {
+void crossprod_quh_h5(const Rcpp::List file_l, const bool doTranspose, Rcpp::NumericVector allele_flip);
+RcppExport SEXP _SeqSupport_crossprod_quh_h5(SEXP file_lSEXP, SEXP doTransposeSEXP, SEXP allele_flipSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::List >::type file_l(file_lSEXP);
     Rcpp::traits::input_parameter< const bool >::type doTranspose(doTransposeSEXP);
-    crossprod_quh_h5(file_l, doTranspose);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type allele_flip(allele_flipSEXP);
+    crossprod_quh_h5(file_l, doTranspose, allele_flip);
     return R_NilValue;
 END_RCPP
 }
@@ -103,22 +94,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const Rcpp::List >::type file_l(file_lSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List >::type options(optionsSEXP);
     rcpp_result_gen = Rcpp::wrap(calc_af_h5(file_l, options));
-    return rcpp_result_gen;
-END_RCPP
-}
-// simulate_y_h5
-Eigen::MatrixXd simulate_y_h5(const Rcpp::List file_l, const int p, const int N, const int g, Eigen::ArrayXd& tsigu, Rcpp::NumericVector Af);
-RcppExport SEXP _SeqSupport_simulate_y_h5(SEXP file_lSEXP, SEXP pSEXP, SEXP NSEXP, SEXP gSEXP, SEXP tsiguSEXP, SEXP AfSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::List >::type file_l(file_lSEXP);
-    Rcpp::traits::input_parameter< const int >::type p(pSEXP);
-    Rcpp::traits::input_parameter< const int >::type N(NSEXP);
-    Rcpp::traits::input_parameter< const int >::type g(gSEXP);
-    Rcpp::traits::input_parameter< Eigen::ArrayXd& >::type tsigu(tsiguSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type Af(AfSEXP);
-    rcpp_result_gen = Rcpp::wrap(simulate_y_h5(file_l, p, N, g, tsigu, Af));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -178,15 +153,13 @@ END_RCPP
 RcppExport SEXP run_testthat_tests();
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SeqSupport_blosc", (DL_FUNC) &_SeqSupport_blosc, 0},
     {"_SeqSupport_ld_p_h5", (DL_FUNC) &_SeqSupport_ld_p_h5, 7},
     {"_SeqSupport_center_columns_exp", (DL_FUNC) &_SeqSupport_center_columns_exp, 1},
     {"_SeqSupport_calc_uh_se_exp", (DL_FUNC) &_SeqSupport_calc_uh_se_exp, 3},
     {"_SeqSupport_evd_rnorm_i", (DL_FUNC) &_SeqSupport_evd_rnorm_i, 3},
-    {"_SeqSupport_crossprod_quh_h5", (DL_FUNC) &_SeqSupport_crossprod_quh_h5, 2},
+    {"_SeqSupport_crossprod_quh_h5", (DL_FUNC) &_SeqSupport_crossprod_quh_h5, 3},
     {"_SeqSupport_sim_U_exp", (DL_FUNC) &_SeqSupport_sim_U_exp, 3},
     {"_SeqSupport_calc_af_h5", (DL_FUNC) &_SeqSupport_calc_af_h5, 2},
-    {"_SeqSupport_simulate_y_h5", (DL_FUNC) &_SeqSupport_simulate_y_h5, 6},
     {"_SeqSupport_est_spve_h5", (DL_FUNC) &_SeqSupport_est_spve_h5, 4},
     {"_SeqSupport_orthogonalize_data", (DL_FUNC) &_SeqSupport_orthogonalize_data, 2},
     {"_SeqSupport_orthogonalize_covars", (DL_FUNC) &_SeqSupport_orthogonalize_covars, 1},

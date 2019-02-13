@@ -44,16 +44,34 @@ test_that("AF is calculated correctly",{
   p <- 5
   g <- 3
   tp <- runif(p)
-  tX <- sapply(tp,rbinom,n=n,size=2)
+  tX <- t(igraph::sample_dirichlet(n=p,alpha=rep(1/n,n)))
+
   tempf <- tempfile()
-  EigenH5::write_matrix_h5(filename = tempf,groupname = "/",dataname = "dosage",data=t(tX))
+  EigenH5::write_matrix_h5(tX,filename = tempf,"dosage")
   fl <-list(list(filename=tempf,datapath="dosage",subset_rows=1:3),
             list(filename=tempf,datapath="dosage",subset_rows=4:5))
-  res_af <- calc_af_h5(fl)
-  expect_equal(res_af,alt_AF(tX))
-  expect_equal(res_af,tp,tolerance=0.01)
+  res_af <- calc_af_h5(fl,list())
+  expect_equal(res_af,rep(1/(2*n),p))
+  # expect_equal(res_af,tp,tolerance=0.01)
   # test_x <- matrix(as.numeric(rbinom(n = n*p,size = 2,prob = 0.1)),p,n)
 })
+
+test_that("AF is calculated correctly when data is not SNPfirst",{
+  n <- 10000
+  p <- 5
+  g <- 3
+  tp <- runif(p)
+  tX <- igraph::sample_dirichlet(n=p,alpha=rep(1/n,n))
+
+  tempf <- tempfile()
+  EigenH5::write_matrix_h5(tX,filename = tempf,"dosage")
+  fl <-list(list(filename=tempf,datapath="dosage",subset_cols=1:3),
+            list(filename=tempf,datapath="dosage",subset_cols=4:5))
+  res_af <- calc_af_h5(fl,list(SNPfirst=FALSE))
+  expect_equal(res_af,rep(1/(2*n),p))
+
+})
+
 
 # test_that("Can simulate samples from EVD",{
 #
