@@ -24,7 +24,7 @@ tparamdf_norm <- function(pve=NULL, bias = 0, nreps, n, p,pcovar=0,fgeneid=NULL,
         dplyr::group_by(tpve, tbias) %>%
         dplyr::mutate(replicate=1:n()) %>%
         dplyr::ungroup() %>%
-        dplyr::mutate(fgeneid=as.character(1:n()), tsigu=sqrt(n/p*tpve),tbias=tsigu*tbias) %>%
+        dplyr::mutate(fgeneid=as.character(1:n()), tsigu=sqrt(n/p*tpve)) %>%
         dplyr::select(-replicate) %>% mutate(pcovar=pcovar)
     if(!is.null(tfgeneid)){
         stopifnot(nrow(rfp)==length(tfgeneid))
@@ -37,12 +37,17 @@ tparamdf_norm <- function(pve=NULL, bias = 0, nreps, n, p,pcovar=0,fgeneid=NULL,
 #' calculate the scale of residuals, given X*Beta and the target PVE
 #' @param vy vector with the variance of y (length is equal to the number of traits)
 #' @param PVE vector specifying the target PVE (length should be the same as the number of traits)
-gen_ti <- function(vy, PVE){
+gen_ti <- function(vy, PVE,vconf=rep(0L,length(vy))){
     stopifnot(length(vy)==length(PVE))
-    retvec <- vy*(1/PVE-1)
-    retvec[PVE==0] <- 1
+    # stopifnot(all(vconf[PVE==0]==0))
+    retvec <- vy*(1/PVE-1)-vconf
+    stopifnot(all(retvec[PVE>0]>=0))
+    # retvec <- /vy-vy-vconf
+    retvec[PVE==0] <- 1-vconf
     return(retvec)
 }
+
+
 
 
 #' read log from LD score regression (as implemented in `ldsc`), and parse it so results can be compared to RSSp
@@ -140,10 +145,10 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,sim_ind,chunksize=
     #                         filename=beta_h5file,
     #                         datapath="Betac"))
 
-    D_l  <- paste0("EVD/",unique(snp_df$region_id),"/D")
-    #                       datapath=paste0("EVD/",.x,"/D")))
-
-    Q_l  <- paste0("EVD/",unique(snp_df$region_id),"/Q")
+    # D_l  <- paste0("EVD/",unique(snp_df$region_id),"/D")
+    # #                       datapath=paste0("EVD/",.x,"/D")))
+    #
+    # Q_l  <- paste0("EVD/",unique(snp_df$region_id),"/Q")
     #%>% purrr::map_chr(~list(filename=evd_h5file,
     #                       datapath=paste0("EVD/",.x,"/Q")))
 
@@ -164,11 +169,11 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,sim_ind,chunksize=
                               data = numeric(),
                               dims = dims_beta,
                               chunksizes=as.integer(c(g,min(p,100))))
-    EigenH5::create_matrix_h5(filename = beta_h5file,
-                              datapath="Betac",
-                              data = numeric(),
-                              dims = dims_beta,
-                              chunksizes=as.integer(c(g,min(p,100))))
+    # EigenH5::create_matrix_h5(filename = beta_h5file,
+    #                           datapath="Betac",
+    #                           data = numeric(),
+    #                           dims = dims_beta,
+    #                           chunksizes=as.integer(c(g,min(p,100))))
 
     EigenH5::write_vector_h5(data = runif(p),filename = beta_h5file, datapath="S")
     # ymat <- simulate_y_h5(list(SNP=snp_lff,
@@ -188,12 +193,13 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,sim_ind,chunksize=
       tp <- length(S)
       U <- matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tsigu,times=p)),nrow = tp,ncol = g)
       Beta <- U*S
-      Betac <-matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tbias,times=p)),nrow = tp,ncol = g)
-      Q <- read_matrix_h5(evd_h5file,datapath = Q_l[i])
-      D <- read_vector_h5(evd_h5file,datapath=D_l[i])
-      ymat <- ymat+X%*%(Beta+Q%*%(D*Betac))
+      # Betac <-matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tbias,times=p)),nrow = tp,ncol = g)
+      # Q <- read_matrix_h5(evd_h5file,datapath = Q_l[i])
+      # D <- read_vector_h5(evd_h5file,datapath=D_l[i])
+      # ymat <- ymat+X%*%(Beta+Q%*%(D*Betac))
+      ymat <- ymat+X%*%Beta
       write_matrix_h5(t(Beta),filename = beta_h5file,"Beta",subset_cols=beta_l[[i]])
-      write_matrix_h5(t(Betac),filename = beta_h5file,"Betac",subset_cols=betac_l[[i]])
+      # write_matrix_h5(t(Betac),filename = beta_h5file,"Betac",subset_cols=betac_l[[i]])
       pb$tick()
     }
     return(ymat)
@@ -225,13 +231,24 @@ gen_sim_resid_covar <- function(ty,tparam_df,C=matrix(1,nrow=nrow(ty),ncol=1),co
 }
 
 
-gen_sim_resid <- function(ty,tparam_df){
+gen_sim_resid <- function(ty,tparam_df,Q=matrix(0,nrow=nrow(ty),ncol=1)){
     vy <- apply(ty, 2, var)
-    n <- nrow(ty)
+    N <- nrow(ty)
     stopifnot(ncol(ty)==nrow(tparam_df))
-    residvec <- gen_ti(vy, tparam_df$tpve)
+    K <- ncol(Q)
+    Q_beta <- t(matrix(sqrt(((tparam_df$tbias)*(N-1))/K),
+                       nrow=length(tparam_df$tbias),
+                       ncol=K))
+
+    Q_y <- Q%*%Q_beta
+
+
+    residvec <- gen_ti(vy, tparam_df$tpve,vconf=tparam_df$tbias)
+
+
+
     residmat <- sapply(residvec, function(ti, n){rnorm(n=n, mean=0, sd=sqrt(ti))}, n=n)
-    ymat <- scale(ty+residmat, center=T, scale=F)
+    ymat <- scale(ty+residmat+Q_y, center=T, scale=F)
     return(ymat)
 }
 
