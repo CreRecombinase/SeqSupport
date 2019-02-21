@@ -144,7 +144,7 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,sim_ind,chunksize=
     #         filename=beta_h5file,
     #                datapath="Beta"))
 
-    betac_l  <- split(1:p, snp_df$region_id) #%>% purrr::map(~list(subset_cols=.x,
+   # betac_l  <- split(1:p, snp_df$region_id) #%>% purrr::map(~list(subset_cols=.x,
     #                         filename=beta_h5file,
     #                         datapath="Betac"))
 
@@ -194,7 +194,7 @@ gen_ty_h5 <- function(snp_df,snp_h5file,beta_h5file,tparam_df,sim_ind,chunksize=
       write_vector_h5(S, filename = beta_h5file, datapath = "S", subset=S_l[[i]])
 
       tp <- length(S)
-      U <- matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tsigu,times = tp)), nrow = tp, ncol = g)
+      U <- matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tsigu,times = tp)), nrow = tp, ncol = g,byrow = T)
       Beta <- U*S
       # Betac <-matrix(rnorm(n = tp*g,mean=0,sd=rep(tparam_df$tbias,times=p)),nrow = tp,ncol = g)
       # Q <- read_matrix_h5(evd_h5file,datapath = Q_l[i])
@@ -249,10 +249,11 @@ gen_sim_resid <- function(ty,tparam_df,Q=matrix(0,nrow=nrow(ty),ncol=1)){
     Q_y <- Q%*%Q_beta
 
 
-
-    residmat <- sapply((1-tparam_df$tbias)*residvec, function(ti, n){rnorm(n=n, mean=0, sd=sqrt(ti))}, n=n)
-    ymat <- scale(ty+residmat+Q_y, center=T, scale=F)
-    return(ymat)
+  tr <- (1-tparam_df$tbias)*residvec
+  rf <- function(ti, n){rnorm(n=n, mean=0, sd=sqrt(ti))}
+  residmat <- sapply(tr, rf, n=N)
+  ymat <- scale(ty+residmat+Q_y, center=T, scale=F)
+  return(ymat)
 }
 
 
