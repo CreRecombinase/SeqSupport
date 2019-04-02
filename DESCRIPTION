@@ -19,6 +19,6 @@ Imports:
     magrittr,
     RcppParallel
 LinkingTo: Rcpp,BH, RcppEigen,testthat,EigenH5,RcppProgress,RcppParallel
-Remotes: bioc::IRanges,bioc::SeqArray,CreRecombinase/RSSp,CreRecombinase/EigenH5,stephenslab/LDshrink
+Remotes: bioc::IRanges,bioc::SeqArray,CreRecombinase/RSSp,stephenslab/LDshrink
 Suggests: testthat
 SystemRequirements: GNU make
