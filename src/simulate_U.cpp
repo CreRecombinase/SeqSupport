@@ -540,13 +540,7 @@ void map_eQTL_chunk_h5(const Rcpp::List snp_dff ,const Rcpp::List exp_dff,const 
   const int num_reg = SNP_f.getNumSelections();
   auto dimvec_SNP = SNP_f.get_selection_dims();
   auto dimvec_EXP = EXP_f.get_selection_dims();
-  // std::vector<int>af_offset(num_reg,0);
-  // int ttp=0;
-  // for(int i=0; i<num_reg;i++){
-  //   auto dvSNP = dimvec_SNP[i];
-  //   af_offset[i]=ttp;
-  //   ttp+=dvSNP.front();
-  // }
+
 
   int rk=0;
   Mat EXP_chunk;
