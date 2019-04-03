@@ -18,7 +18,7 @@ Imports:
     purrr,
     magrittr,
     RcppParallel
-LinkingTo: Rcpp,BH, RcppEigen,testthat,EigenH5,RcppProgress,RcppParallel,xtensor
+LinkingTo: Rcpp,BH, RcppEigen,testthat,EigenH5,RcppProgress,RcppParallel,xtensor,Rhdf5lib
 Remotes: bioc::IRanges,bioc::SeqArray,CreRecombinase/EigenH5@chunkreader,CreRecombinase/RSSp,stephenslab/LDshrink
 Suggests: testthat
 SystemRequirements: GNU make
